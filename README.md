@@ -21,7 +21,7 @@ A high-performance, offline-first desktop application built with modern technolo
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/offline-desktop-app.git
+git clone https://github.com/Anthony-Fi/homellmcoder
 cd offline-desktop-app
 
 # Install Python dependencies
