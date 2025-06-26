@@ -12,6 +12,7 @@ class LocalLLMManager:
         """Initializes the LLM manager."""
         self.loaded_model = None
         self.client = self._get_ollama_client()
+        self.conversation_history = []
 
     def _get_ollama_client(self):
         """Establishes connection with the Ollama service."""
@@ -61,6 +62,40 @@ class LocalLLMManager:
         except Exception as e:
             logging.error(f"An unexpected error occurred while loading model '{model_name}': {e}")
             return {"status": "error", "message": "An unexpected error occurred."}
+
+    def chat_stream(self, prompt: str, callback):
+        """Sends a prompt to the model and streams the response via a callback."""
+        if not self.loaded_model:
+            callback({"status": "error", "message": "No model loaded."})
+            return
+
+        if not self.client:
+            callback({"status": "error", "message": "Ollama client not available."})
+            return
+
+        self.conversation_history.append({'role': 'user', 'content': prompt})
+
+        try:
+            stream = self.client.chat(
+                model=self.loaded_model,
+                messages=self.conversation_history,
+                stream=True
+            )
+
+            full_response = ""
+            for chunk in stream:
+                chunk_content = chunk['message']['content']
+                full_response += chunk_content
+                callback({"status": "chunk", "content": chunk_content})
+
+            self.conversation_history.append({'role': 'assistant', 'content': full_response})
+            callback({"status": "done"})
+
+        except Exception as e:
+            logging.error(f"Error during chat stream: {e}")
+            # Reset history on error to avoid corruption
+            self.conversation_history.pop()
+            callback({"status": "error", "message": str(e)})
 
     def get_loaded_model(self):
         """Returns the name of the currently loaded model."""

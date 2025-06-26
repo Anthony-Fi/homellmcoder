@@ -1,74 +1,81 @@
-import pathlib
+import os
 import logging
-from typing import List, Optional, Dict
+from pathlib import Path
+from typing import Optional, List
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class RAGSystem:
-    """A placeholder for a Retrieval-Augmented Generation (RAG) system."""
+    """Manages Retrieval-Augmented Generation, including document indexing and querying."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, vector_db_path: Optional[str] = None):
         """
         Initializes the RAG system.
 
         Args:
-            db_path: The path to the vector database. If None, uses a default path.
+            vector_db_path: The path to the vector database. If None, uses a default.
         """
-        if db_path:
-            self.db_path = pathlib.Path(db_path)
+        if vector_db_path:
+            self.vector_db_path = Path(vector_db_path)
         else:
-            self.db_path = pathlib.Path.home() / ".homellmcoder" / "vector_db"
+            self.vector_db_path = Path.home() / ".homellmcoder" / "vector_db"
         
-        self._create_db_path()
+        self._create_vector_db_dir()
+        self.indexed_documents: List[str] = [] # In-memory store for now
 
-    def _create_db_path(self):
+    def _create_vector_db_dir(self):
         """Creates the vector database directory if it doesn't exist."""
         try:
-            self.db_path.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Vector DB path is set to: {self.db_path}")
+            self.vector_db_path.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Vector database directory is set to: {self.vector_db_path}")
         except OSError as e:
-            logging.error(f"Failed to create vector DB directory at {self.db_path}: {e}")
+            logging.error(f"Failed to create vector database directory: {e}")
             raise
 
-    def index(self, documents: List[Dict[str, str]]) -> bool:
+    def index(self, file_path: str) -> bool:
         """
-        Indexes a list of documents. (This is a stub)
+        Indexes a document by reading its content into an in-memory list.
 
         Args:
-            documents: A list of documents to index, where each document is a dictionary.
+            file_path: The path to the document to index.
 
         Returns:
-            True if indexing is successful, False otherwise.
+            True if indexing was successful, False otherwise.
         """
-        logging.info(f"Indexing {len(documents)} documents...")
-        # Placeholder for actual indexing logic (e.g., with FAISS, ChromaDB)
-        if not documents:
-            logging.warning("No documents provided to index.")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            self.indexed_documents.append(content)
+            logging.info(f"Successfully indexed content from: {file_path}")
+            logging.info(f"Total documents indexed: {len(self.indexed_documents)}")
+            return True
+        except FileNotFoundError:
+            logging.error(f"File not found during indexing: {file_path}")
             return False
-        
-        # Simulate storing metadata
-        with open(self.db_path / "index.log", "a") as f:
-            for doc in documents:
-                f.write(f"Indexed document: {doc.get('id', 'N/A')}\n")
+        except Exception as e:
+            logging.error(f"An error occurred during indexing of {file_path}: {e}")
+            return False
 
-        logging.info("Indexing complete (stub).")
-        return True
-
-    def query(self, query_text: str) -> List[str]:
+    def query(self, query_text: str) -> Optional[str]:
         """
-        Performs a similarity search for a given query. (This is a stub)
+        Queries the indexed documents. (This is a stub)
 
         Args:
-            query_text: The text to search for.
+            query_text: The query to search for.
 
         Returns:
-            A list of relevant document contents.
+            A relevant document snippet, or None if not found.
         """
-        logging.info(f"Executing query: '{query_text}'")
-        # Placeholder for actual query logic
-        if not query_text:
-            return []
-            
-        # Simulate returning a dummy result
-        return ["This is a placeholder result for your query."]
+        logging.info(f"Received query: '{query_text}'")
+        if not self.indexed_documents:
+            logging.warning("Query attempted, but no documents are indexed.")
+            return "No documents have been indexed yet."
+        
+        # Stubbed search: return the first document that contains the query text
+        for doc in self.indexed_documents:
+            if query_text.lower() in doc.lower():
+                logging.info("Found a matching document for the query.")
+                return doc[:500] + "..." # Return a snippet
+
+        logging.info("No matching document found for the query.")
+        return "No relevant document found."
