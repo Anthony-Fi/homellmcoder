@@ -10,9 +10,14 @@ class LocalLLMManager:
 
     def __init__(self):
         """Initializes the LLM manager."""
+        logging.info("--- Initializing LocalLLMManager ---")
         self.loaded_model = None
+        self.client = None  # Ensure client attribute always exists
+        logging.info("--- self.client initialized to None ---")
         self.client = self._get_ollama_client()
+        logging.info(f"--- self.client is now: {type(self.client)} ---")
         self.conversation_history = []
+        logging.info("--- LocalLLMManager initialization complete ---")
 
     def _get_ollama_client(self):
         """Establishes connection with the Ollama service."""
@@ -48,54 +53,61 @@ class LocalLLMManager:
 
         if not model_name:
             return {"status": "error", "message": "No model name provided."}
-
+        
         try:
-            # For Ollama, 'loading' is implicit. We just verify the model exists.
-            # A more robust check might involve a quick interaction.
             self.client.show(model_name)
             self.loaded_model = model_name
+            self.conversation_history = []  # Reset history when a new model is loaded
             logging.info(f"Model '{model_name}' is ready for use.")
             return {"status": "success", "message": f"Model '{model_name}' loaded."}
-        except ollama.ResponseError as e:
-            logging.error(f"Failed to load model '{model_name}'. Error: {e.error}")
-            return {"status": "error", "message": f"Model '{model_name}' not found or invalid."}
         except Exception as e:
-            logging.error(f"An unexpected error occurred while loading model '{model_name}': {e}")
-            return {"status": "error", "message": "An unexpected error occurred."}
+            logging.error(f"Failed to load model '{model_name}': {e}")
+            return {"status": "error", "message": f"Failed to load model '{model_name}'."}
 
-    def chat_stream(self, prompt: str, callback):
-        """Sends a prompt to the model and streams the response via a callback."""
+    def get_response(self, prompt: str, user_file_content: str = None):
+        """Generates a response from the loaded model, streaming the output."""
         if not self.loaded_model:
-            callback({"status": "error", "message": "No model loaded."})
+            yield "No model is loaded. Please load a model first."
             return
 
         if not self.client:
-            callback({"status": "error", "message": "Ollama client not available."})
+            yield "Ollama client not available."
             return
 
-        self.conversation_history.append({'role': 'user', 'content': prompt})
-
         try:
-            stream = self.client.chat(
+            # Construct the full prompt with context
+            full_prompt = self.construct_prompt_with_history(prompt, user_file_content)
+
+            # Add the user's new message to the history
+            self.conversation_history.append({'role': 'user', 'content': full_prompt})
+
+            # Generate the response
+            response = self.client.chat(
                 model=self.loaded_model,
                 messages=self.conversation_history,
                 stream=True
             )
 
-            full_response = ""
-            for chunk in stream:
-                chunk_content = chunk['message']['content']
-                full_response += chunk_content
-                callback({"status": "chunk", "content": chunk_content})
+            # Process and yield the streaming response
+            assistant_response = ""
+            for chunk in response:
+                content = chunk['message']['content']
+                assistant_response += content
+                yield content
 
-            self.conversation_history.append({'role': 'assistant', 'content': full_response})
-            callback({"status": "done"})
+            # Add the assistant's full response to the history
+            self.conversation_history.append({'role': 'assistant', 'content': assistant_response})
 
         except Exception as e:
-            logging.error(f"Error during chat stream: {e}")
-            # Reset history on error to avoid corruption
-            self.conversation_history.pop()
-            callback({"status": "error", "message": str(e)})
+            logging.error(f"Error getting response from model: {e}")
+            yield f"Error: {e}"
+
+    def construct_prompt_with_history(self, new_prompt, file_content):
+        """Constructs a prompt including conversation history and file context."""
+        # This is a simplified example. A more robust implementation would manage token limits.
+        if file_content:
+            return f"File Content:\n```\n{file_content}\n```\n\nUser Request: {new_prompt}"
+        return new_prompt
 
     def get_loaded_model(self):
         """Returns the name of the currently loaded model."""

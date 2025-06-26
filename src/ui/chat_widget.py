@@ -1,7 +1,8 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLineEdit, QPushButton, QHBoxLayout, QLabel, QScrollArea, QFrame
-from PyQt6.QtCore import pyqtSignal, QObject, QThread, Qt
-from PyQt6.QtGui import QFont, QColor, QPalette
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel, QScrollArea, QFrame, QMessageBox
+from PyQt6.QtCore import pyqtSignal, QObject, QThread, Qt, QTimer
+from PyQt6.QtGui import QColor, QPalette, QKeyEvent, QFont
 import re
+import os
 import json
 
 class ChatWorker(QObject):
@@ -94,6 +95,28 @@ class ChatBubble(QWidget):
         else:
             self.apply_button.setVisible(False)
 
+class ChatInputBox(QTextEdit):
+    """A custom QTextEdit that sends a message on Enter and adds a newline on Ctrl+Enter."""
+    send_message = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(40) # Set a larger minimum height
+        self.setMaximumHeight(120) # And a maximum height to control resizing
+        self.setPlaceholderText("Ask the AI here. Press Enter to send, Ctrl+Enter for a new line.")
+
+    def keyPressEvent(self, event: QKeyEvent):
+        # Send message on Enter, but allow newlines with Ctrl+Enter
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                # Ctrl+Enter -> Insert newline
+                self.insertPlainText('\n')
+            else:
+                # Enter -> Send message
+                self.send_message.emit()
+        else:
+            super().keyPressEvent(event) # Default behavior for all other keys
+
 class LLMChatWidget(QWidget):
     """A widget for interacting with the loaded LLM."""
     change_requested = pyqtSignal(dict)
@@ -136,12 +159,15 @@ class LLMChatWidget(QWidget):
         For any other conversation, code explanation, or questions that do not involve file manipulation, you can respond normally as a helpful AI assistant.
     """)
 
-    def __init__(self, llm_manager, parent=None):
+    def __init__(self, llm_manager=None, parent=None):
         super().__init__(parent)
         self.llm_manager = llm_manager
         self.ai_bubble = None
         self.current_ai_response = ""
         self._init_ui()
+
+    def set_llm_manager(self, llm_manager):
+        self.llm_manager = llm_manager
 
     def _init_ui(self):
         """Initializes the UI components of the widget."""
@@ -155,9 +181,8 @@ class LLMChatWidget(QWidget):
         self.conversation_view_layout = QVBoxLayout(self.conversation_view_widget)
         self.conversation_view_layout.setContentsMargins(10, 10, 10, 10)
 
-        self.input_box = QLineEdit()
-        self.input_box.setPlaceholderText("Type your message to the AI here and press Enter...")
-        self.input_box.returnPressed.connect(self.send_message)
+        self.input_box = ChatInputBox() # Use the new custom widget
+        self.input_box.send_message.connect(self.send_message)
         self.input_box.setFont(QFont("Segoe UI", 10))
 
         layout.addWidget(self.conversation_view)
@@ -165,11 +190,11 @@ class LLMChatWidget(QWidget):
 
     def send_message(self):
         """Sends the user's message to the LLM."""
-        prompt = self.input_box.text().strip()
+        prompt = self.input_box.toPlainText().strip()
         if not prompt:
             return
 
-        if not self.llm_manager.get_loaded_model():
+        if not self.llm_manager:
             self.conversation_view_layout.addWidget(ChatBubble("<i style='color:red;'>Error: No model is loaded. Please select and load a model first.</i>", True))
             return
 

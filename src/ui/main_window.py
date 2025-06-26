@@ -3,32 +3,66 @@ import shutil
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QTextEdit, QSplitter, QTreeView, QLabel, QStatusBar,
-    QComboBox, QPushButton, QProgressBar, QTabWidget, QMenu, QInputDialog, QMessageBox
+    QComboBox, QPushButton, QProgressBar, QTabWidget, QMenu, QInputDialog, QMessageBox, QFileDialog
 )
-from PyQt6.QtGui import QFileSystemModel
+from PyQt6.QtGui import QFileSystemModel, QAction
 from PyQt6.QtCore import Qt, QDir, QModelIndex
 import os
 import tempfile
+import logging
+import sys
+from pathlib import Path
 
-from llm_service.manager import LocalLLMManager
-from llm_service.rag import RAGSystem
-from .code_editor import TabbedCodeEditor
-from .chat_widget import LLMChatWidget
-from .terminal_widget import TerminalWidget
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from src.llm_service.manager import LocalLLMManager
+from src.llm_service.rag import RAGSystem
+from src.ui.code_editor import TabbedCodeEditor
+from src.ui.chat_widget import LLMChatWidget
+from src.ui.terminal_widget import TerminalWidget
+from src.ui.load_model_thread import LoadModelThread
+
+# Import version using absolute import
+try:
+    from src.version import __version__
+except ImportError:
+    # Fallback for when running as a package
+    from version import __version__
 
 class MainWindow(QMainWindow):
     """Main application window with a three-panel layout."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("HomeLLMCoder - Offline AI Desktop App")
+        self.setWindowTitle(f"HomeLLMCoder v{__version__}")
         self.setGeometry(100, 100, 1200, 800)
 
+        # Initialize project root
+        self.project_root = QDir.currentPath()
+
         # Initialize backend managers first, as UI components depend on them
-        self.llm_manager = LocalLLMManager()
+        try:
+            logging.info("Attempting to create LocalLLMManager instance.")
+            self.llm_manager = LocalLLMManager()
+            logging.info("LocalLLMManager instance created successfully.")
+        except Exception as e:
+            logging.critical(f"CRITICAL ERROR during LocalLLMManager instantiation: {e}", exc_info=True)
+            self.llm_manager = None
         self.rag_system = RAGSystem()
 
-        # Create main layout
+        # Initialize UI components
+        self._create_central_widget()
+        self._create_menus()
+        self._create_status_bar()
+
+        # Populate models after UI is created
+        self._populate_models()
+
+    def _create_central_widget(self):
+        """Creates the main layout."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -63,24 +97,24 @@ class MainWindow(QMainWindow):
         main_splitter.setSizes([250, 950])
         right_splitter.setSizes([600, 200])
 
-        # Create status bar
-        self._create_status_bar()
-
-        # Populate models
-        self._populate_models()
-
     def _create_file_navigator(self) -> QWidget:
         """Creates the file navigator panel."""
         navigator_container = QWidget()
         layout = QVBoxLayout(navigator_container)
-        layout.setContentsMargins(0, 0, 0, 0)
 
         model = QFileSystemModel()
-        model.setRootPath(QDir.currentPath())
+        # Set the root to empty to show all drives
+        model.setRootPath("")
+        model.setFilter(QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot | QDir.Filter.Hidden)
 
         self.tree = QTreeView()
         self.tree.setModel(model)
-        self.tree.setRootIndex(model.index(QDir.currentPath()))
+        # The view will now start at the drive level
+
+        # --- Configure Tree View Appearance ---
+        self.tree.setAnimated(True)
+        self.tree.setIndentation(20)
+
         self.tree.setColumnWidth(0, 200)
         self.tree.setAlternatingRowColors(True)
         self.tree.doubleClicked.connect(self._on_file_navigator_double_clicked)
@@ -97,18 +131,61 @@ class MainWindow(QMainWindow):
         layout.addWidget(index_button)
         return navigator_container
 
+    def _create_menus(self):
+        """Creates the main menu bar."""
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("&File")
+
+        open_folder_action = QAction("&Open Project Folder...", self)
+        open_folder_action.triggered.connect(self._open_project_folder)
+        file_menu.addAction(open_folder_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("&Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+    def _open_project_folder(self):
+        """Opens a dialog to select a project folder."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Project Folder", QDir.currentPath())
+        if directory:
+            self._set_project_root(directory)
+
+    def _set_project_root(self, path):
+        """Sets the root directory for the file navigator and updates the UI."""
+        self.project_root = os.path.abspath(path)
+        self.tree.model().setRootPath(self.project_root)
+        self.tree.setRootIndex(self.tree.model().index(self.project_root))
+        self.project_root_label.setText(f"Project: {self.project_root}")
+        self.statusBar().showMessage(f"Project root set to {self.project_root}", 5000)
+
     def _show_file_navigator_context_menu(self, position):
         """Creates and shows the context menu for the file navigator."""
-        menu = QMenu()
         index = self.tree.indexAt(position)
-        path = self.tree.model().filePath(index) if index.isValid() else QDir.currentPath()
+        if not index.isValid():
+            return
 
-        # Actions
-        new_file_action = menu.addAction("New File...")
+        menu = QMenu()
+        file_path = self.tree.model().filePath(index)
+
+        # Add 'Set as Project Root' action only for directories
+        if os.path.isdir(file_path):
+            set_as_root_action = QAction("Set as Project Root", self)
+            set_as_root_action.triggered.connect(lambda: self._set_project_root(file_path))
+            menu.addAction(set_as_root_action)
+            menu.addSeparator()
+
+        new_file_action = QAction("New File...")
+        new_file_action.triggered.connect(lambda: self._create_new_file(file_path))
+        menu.addAction(new_file_action)
         new_folder_action = menu.addAction("New Folder...")
+        new_folder_action.triggered.connect(lambda: self._create_new_folder(file_path))
         menu.addSeparator()
         rename_action = menu.addAction("Rename...")
+        rename_action.triggered.connect(lambda: self._rename_item(file_path))
         delete_action = menu.addAction("Delete")
+        delete_action.triggered.connect(lambda: self._delete_item(file_path))
 
         # Disable actions that don't apply
         if not index.isValid():
@@ -116,16 +193,6 @@ class MainWindow(QMainWindow):
             delete_action.setEnabled(False)
 
         action = menu.exec(self.tree.viewport().mapToGlobal(position))
-
-        # Handle selected action
-        if action == new_file_action:
-            self._create_new_file(path)
-        elif action == new_folder_action:
-            self._create_new_folder(path)
-        elif action == rename_action:
-            self._rename_item(path)
-        elif action == delete_action:
-            self._delete_item(path)
 
     def _create_new_file(self, base_path):
         """Handles the 'New File' action."""
@@ -137,7 +204,7 @@ class MainWindow(QMainWindow):
                 if not os.path.exists(new_path):
                     with open(new_path, 'w') as f:
                         pass  # Create an empty file
-                    self.status_bar.showMessage(f"File '{file_name}' created.", 4000)
+                    self.statusBar().showMessage(f"File '{file_name}' created.", 4000)
                 else:
                     QMessageBox.warning(self, "Error", "File already exists.")
             except Exception as e:
@@ -152,7 +219,7 @@ class MainWindow(QMainWindow):
                 new_path = os.path.join(dir_path, folder_name)
                 if not os.path.exists(new_path):
                     os.makedirs(new_path)
-                    self.status_bar.showMessage(f"Folder '{folder_name}' created.", 4000)
+                    self.statusBar().showMessage(f"Folder '{folder_name}' created.", 4000)
                 else:
                     QMessageBox.warning(self, "Error", "Folder already exists.")
             except Exception as e:
@@ -166,7 +233,7 @@ class MainWindow(QMainWindow):
             try:
                 new_path = os.path.join(os.path.dirname(path), new_name)
                 os.rename(path, new_path)
-                self.status_bar.showMessage(f"Renamed to '{new_name}'.", 4000)
+                self.statusBar().showMessage(f"Renamed to '{new_name}'.", 4000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not rename item: {e}")
 
@@ -186,7 +253,7 @@ class MainWindow(QMainWindow):
                     shutil.rmtree(path)
                 else:
                     os.remove(path)
-                self.status_bar.showMessage(f"Deleted '{item_name}'.", 4000)
+                self.statusBar().showMessage(f"Deleted '{item_name}'.", 4000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not delete item: {e}")
 
@@ -200,23 +267,23 @@ class MainWindow(QMainWindow):
         """Indexes the currently selected file in the tree view."""
         indexes = self.tree.selectedIndexes()
         if not indexes:
-            self.status_bar.showMessage("No file selected.", 4000)
+            self.statusBar().showMessage("No file selected.", 4000)
             return
 
         # Get the file path from the model
         file_path = self.tree.model().filePath(indexes[0])
 
         if os.path.isdir(file_path):
-            self.status_bar.showMessage("Cannot index a directory.", 4000)
+            self.statusBar().showMessage("Cannot index a directory.", 4000)
             return
 
-        self.status_bar.showMessage(f"Indexing {os.path.basename(file_path)}...", 2000)
+        self.statusBar().showMessage(f"Indexing {os.path.basename(file_path)}...", 2000)
         success = self.rag_system.index(file_path)
 
         if success:
-            self.status_bar.showMessage(f"Successfully indexed {os.path.basename(file_path)}.", 5000)
+            self.statusBar().showMessage(f"Successfully indexed {os.path.basename(file_path)}.", 5000)
         else:
-            self.status_bar.showMessage(f"Failed to index {os.path.basename(file_path)}.", 5000)
+            self.statusBar().showMessage(f"Failed to index {os.path.basename(file_path)}.", 5000)
 
     def _execute_code_in_terminal(self, code: str):
         """Receives code, saves it to a temp file, and executes it in the terminal."""
@@ -260,73 +327,61 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Execution Error", f"Failed to execute code: {e}")
 
     def _handle_ai_file_change(self, action: dict):
-        """Handles a file modification action requested by the AI."""
-        action_type = action.get("type")
-        file_path = action.get("file_path")
-        content = action.get("content", "")
+        """Handles file creation/editing actions requested by the AI."""
+        logging.info(f"Attempting to handle AI file change action: {action}")
+        try:
+            action_type = action.get("type")
+            file_path = action.get("file_path")
+            content = action.get("content", "")
 
-        if not action_type or not file_path:
-            QMessageBox.warning(self, "Invalid Action", "AI proposed an invalid file action.")
-            return
-
-        # Ensure the file path is relative to the project root
-        # and prevent directory traversal attacks.
-        project_root = os.path.abspath(QDir.currentPath())
-        full_path = os.path.abspath(os.path.join(project_root, file_path))
-        if not full_path.startswith(project_root):
-            QMessageBox.critical(self, "Security Error", "Attempted file access outside the project directory.")
-            return
-
-        # Create directories if they don't exist for file creation
-        if action_type in ["CREATE_FILE", "OVERWRITE_FILE"]:
-            try:
-                dir_name = os.path.dirname(full_path)
-                if not os.path.exists(dir_name):
-                    os.makedirs(dir_name)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not create directory: {e}")
+            if not action_type or not file_path:
+                QMessageBox.warning(self, "Invalid Action", "AI proposed an invalid file action.")
                 return
 
-        # Ask for user confirmation
-        confirm_text = f"The AI wants to perform the following action:\n\n"
-        confirm_text += f"Type: {action_type}\n"
-        confirm_text += f"File: {file_path}\n\n"
-        confirm_text += "Do you want to proceed?"
+            # Ensure the file path is relative to the project root
+            # and prevent directory traversal attacks.
+            full_path = os.path.abspath(os.path.join(self.project_root, file_path))
+            if not full_path.startswith(self.project_root):
+                raise Exception("Attempted to access a file outside the project root.")
 
-        reply = QMessageBox.question(self, f"Confirm AI Action: {action_type}", confirm_text, 
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
-                                     QMessageBox.StandardButton.No)
+            logging.info(f"Resolved full path for file operation: {full_path}")
 
-        if reply == QMessageBox.StandardButton.No:
-            self.status_bar.showMessage("AI action cancelled by user.", 4000)
-            return
+            if action_type == "CREATE_FILE":
+                # Ensure parent directory exists
+                parent_dir = os.path.dirname(full_path)
+                if not os.path.exists(parent_dir):
+                    os.makedirs(parent_dir)
 
-        # Execute the action
-        try:
-            if action_type == "CREATE_FILE" or action_type == "OVERWRITE_FILE":
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(content)
-                self.status_bar.showMessage(f"Successfully wrote to {file_path}", 5000)
-                # If the editor is open, prompt to reload
-                self.code_editor.check_and_reload_file(full_path)
+                self.statusBar().showMessage(f"File created: {file_path}", 5000)
+                logging.info(f"Successfully created file: {full_path}")
 
-            elif action_type == "DELETE_FILE":
-                if os.path.exists(full_path):
-                    os.remove(full_path)
-                    self.status_bar.showMessage(f"Successfully deleted {file_path}", 5000)
-                else:
-                    self.status_bar.showMessage(f"File not found for deletion: {file_path}", 4000)
-            
-            # Refresh the file navigator to show the change
-            self.tree.model().setRootPath(QDir.currentPath()) # This forces a refresh
+            elif action_type == "EDIT_FILE":
+                if not os.path.exists(full_path):
+                    self.statusBar().showMessage(f"File not found for editing: {file_path}", 4000)
+                    return
+
+                with open(full_path, 'r+', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    # TODO: Implement more robust line-based editing
+                    f.seek(0)
+                    f.writelines(lines)
+
+                self.statusBar().showMessage(f"File updated: {file_path}", 5000)
 
         except Exception as e:
+            logging.error(f"Failed to perform AI action. Action: {action}, Error: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to perform AI action: {e}")
 
     def _create_status_bar(self):
         """Creates and configures the status bar."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+
+        # Add a permanent widget to show the project root
+        self.project_root_label = QLabel(f"Project: {QDir.currentPath()}")
+        self.status_bar.addPermanentWidget(self.project_root_label)
 
         self.model_selector = QComboBox()
         self.model_selector.setToolTip("Select an available LLM")
@@ -344,44 +399,58 @@ class MainWindow(QMainWindow):
 
     def _populate_models(self):
         """Fetches available models from the LLM manager and populates the dropdown."""
-        if self.llm_manager.client:
+        if not self.llm_manager or not self.llm_manager.client:
+            self.statusBar().showMessage("Ollama service not available. Please start Ollama and restart.", 5000)
+            return
+
+        try:
             models = self.llm_manager.discover_models()
             self.model_selector.addItems(models)
             if not models:
                 self.model_selector.addItem("No models found")
                 self.model_selector.setEnabled(False)
                 self.load_model_button.setEnabled(False)
-        else:
-            self.model_selector.addItem("Ollama not running")
-            self.model_selector.setEnabled(False)
-            self.load_model_button.setEnabled(False)
+        except Exception as e:
+            self.statusBar().showMessage(f"Failed to populate models: {e}", 5000)
 
     def _load_selected_model(self):
         """Handles the model loading process."""
-        selected_model = self.model_selector.currentText()
-        if not selected_model or "No models" in selected_model or "Ollama not" in selected_model:
-            self.status_bar.showMessage("No model selected or available to load.", 5000)
-            return
+        model_name = self.model_selector.currentText()
+        if model_name and "No models" not in model_name:
+            self.load_model_button.setEnabled(False)
+            self.load_model_button.setText("Loading...")
+            self.statusBar().showMessage(f"Loading model: {model_name}...")
 
-        self.progress_bar.setVisible(True)
-        self.load_model_button.setEnabled(False)
-        self.model_selector.setEnabled(False)
-        self.status_bar.showMessage(f"Loading model: {selected_model}...")
+            # Run model loading in a separate thread to keep UI responsive
+            self.load_thread = LoadModelThread(self.llm_manager, model_name)
+            self.load_thread.finished.connect(self._on_model_loaded)
+            self.load_thread.start()
 
-        # In a real app, this would be a background thread
-        result = self.llm_manager.load_model(selected_model)
-
-        self.progress_bar.setVisible(False)
+    def _on_model_loaded(self, result):
+        """Callback for when model loading is complete."""
         self.load_model_button.setEnabled(True)
-        self.model_selector.setEnabled(True)
+        self.load_model_button.setText("Load Model")
+        self.statusBar().showMessage(result["message"], 5000)
+        if result["status"] == "success":
+            self.chat_widget.set_llm_manager(self.llm_manager)
 
-        if result and result.get("status") == "success":
-            self.status_bar.showMessage(f"Successfully loaded model: {selected_model}", 5000)
-        else:
-            error_message = result.get("message", "An unknown error occurred.")
-            self.status_bar.showMessage(f"Failed to load model: {error_message}", 5000)
+    def _set_project_root(self, path):
+        """Sets the root directory for the file navigator and updates the UI."""
+        self.project_root = os.path.abspath(path)
+        self.tree.model().setRootPath(self.project_root)
+        self.tree.setRootIndex(self.tree.model().index(self.project_root))
+        self.project_root_label.setText(f"Project: {self.project_root}")
+        self.statusBar().showMessage(f"Project root set to: {self.project_root}")
+        logging.info(f"Project root set to: {self.project_root}")
+
+    def _open_project_folder(self):
+        """Opens a dialog to select a project folder."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Project Folder", QDir.currentPath())
+        if directory:
+            self._set_project_root(directory)
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

@@ -47,6 +47,59 @@ A high-performance, offline-first desktop application with AI capabilities, buil
    ./setup.sh
    ```
 
+## 🚀 Building for v0.02
+
+### Prerequisites
+- Python 3.9+
+- Ollama (for local LLM)
+
+### Installation
+
+1. **Download the latest release**
+   - Download `HomeLLMCoder-v0.02-windows.zip` from the [Releases](https://github.com/Anthony-Fi/homellmcoder/releases) page
+   - Extract the zip file to your desired location
+   - Run `HomeLLMCoder-v0.02.exe`
+
+### Building from Source
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Anthony-Fi/homellmcoder
+   cd homellmcoder
+   git checkout v0.02  # Checkout the v0.02 tag
+   ```
+
+2. **Set up a virtual environment**
+   ```bash
+   # Windows
+   python -m venv venv
+   .\venv\Scripts\activate
+   
+   # Install dependencies
+   pip install -r requirements.txt
+   ```
+
+3. **Run the application**
+   ```bash
+   python src/main.py
+   ```
+
+## 🛠 Building a Distribution
+
+To create a standalone executable:
+
+1. Install build dependencies:
+   ```bash
+   pip install pyinstaller pywin32
+   ```
+
+2. Run the build script:
+   ```bash
+   python build.py
+   ```
+
+3. The distributable zip file will be created in the project root.
+
 ## 🛠 Development
 
 ### Virtual Environment
