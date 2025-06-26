@@ -1,6 +1,6 @@
-# Offline Desktop Application
+# HomeLLMCoder
 
-A high-performance, offline-first desktop application built with modern technologies.
+A high-performance, offline-first desktop application with AI capabilities, built with modern technologies.
 
 ## Features
 
@@ -11,75 +11,129 @@ A high-performance, offline-first desktop application built with modern technolo
 - 🔒 **Secure** - Local data storage with encryption
 - 🌍 **Multi-platform** - Works on Windows, macOS, and Linux
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.9+
 - Node.js 16+
 - Git
+- pip (Python package manager)
 
 ### Installation
+
+#### Windows
+1. Open PowerShell as Administrator
+2. Clone the repository:
+   ```powershell
+   git clone https://github.com/Anthony-Fi/homellmcoder
+   cd homellmcoder
+   ```
+3. Run the setup script:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+   .\setup.ps1
+   ```
+
+#### macOS/Linux
+1. Open Terminal
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/Anthony-Fi/homellmcoder
+   cd homellmcoder
+   ```
+3. Make the setup script executable and run it:
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+
+## 🛠 Development
+
+### Virtual Environment
+
+#### Activating the Environment
+- **Windows**:
+  ```powershell
+  .\venv\Scripts\Activate.ps1
+  ```
+- **macOS/Linux**:
+  ```bash
+  source venv/bin/activate
+  ```
+
+#### Deactivating the Environment
 ```bash
-# Clone the repository
-git clone https://github.com/Anthony-Fi/homellmcoder
-cd offline-desktop-app
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install frontend dependencies
-cd frontend
-npm install
-
-# Build the frontend
-npm run build
-
-# Run the application
-cd ..
-python main.py
+deactivate
 ```
 
-## Project Structure
+### Running the Application
 
-```
-project/
-├── .github/          # GitHub workflows and templates
-├── docs/             # Documentation
-├── src/              # Source code
-│   ├── core/        # Core application logic
-│   ├── ui/          # User interface components
-│   └── utils/       # Utility functions
-├── tests/           # Test suites
-└── frontend/        # Frontend source code
-```
+1. Ensure the virtual environment is activated
+2. Start the development server:
+   ```bash
+   python src/index.py
+   ```
+3. Open your browser to `http://localhost:3000`
 
-## Development
+### Installing Dependencies
 
-### Setup Development Environment
+- **Python Dependencies**:
+  ```bash
+  pip install -r requirements.txt
+  ```
+  
+- **Development Dependencies**:
+  ```bash
+  pip install -r requirements-dev.txt
+  ```
+
+- **Node.js Dependencies**:
+  ```bash
+  npm install
+  ```
+
+## 🧪 Testing
+
+Run the test suite:
 ```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
 pytest
-
-# Run with hot-reload for development
-python -m src.main --dev
 ```
 
-### Contributing
+Run specific tests:
+```bash
+pytest tests/<test_file>.py -v
+```
+
+## 🤝 Contributing
+
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Support
+## 💬 Support
 
-For support, please open an issue in the GitHub repository.
-## Testing
-This is a test change to verify GitHub integration.
+For support or questions, please open an issue in the [GitHub repository](https://github.com/Anthony-Fi/homellmcoder/issues).
+
+## Project Structure
+
+```
+homellmcoder/
+├── .github/            # GitHub workflows and CI/CD
+├── src/                # Source code
+│   ├── assets/        # Static files (images, styles)
+│   ├── components/    # Reusable UI components
+│   ├── pages/         # Application pages
+│   ├── services/      # API and service integrations
+│   └── utils/         # Utility functions
+├── tests/             # Test files
+├── .gitignore         # Git ignore file
+├── package.json       # Node.js dependencies
+├── requirements.txt   # Python dependencies
+├── setup.ps1          # Windows setup script
+└── setup.sh           # Unix/Linux setup script
