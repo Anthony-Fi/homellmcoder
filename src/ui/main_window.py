@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFileSystemModel
 from PyQt6.QtCore import Qt, QDir, QModelIndex
 import os
+import tempfile
 
 from llm_service.manager import LocalLLMManager
 from llm_service.rag import RAGSystem
@@ -46,15 +47,17 @@ class MainWindow(QMainWindow):
 
         # Top-right: Code Editor
         self.code_editor = TabbedCodeEditor()
+        self.code_editor.code_to_execute.connect(self._execute_code_in_terminal)
         right_splitter.addWidget(self.code_editor)
 
         # Bottom-right: Tabbed view for Chat and Terminal
-        bottom_right_tabs = QTabWidget()
+        self.bottom_right_tabs = QTabWidget()
         self.chat_widget = LLMChatWidget(self.llm_manager)
+        self.chat_widget.change_requested.connect(self._handle_ai_file_change)
         self.terminal_widget = TerminalWidget()
-        bottom_right_tabs.addTab(self.chat_widget, "LLM Chat")
-        bottom_right_tabs.addTab(self.terminal_widget, "Terminal")
-        right_splitter.addWidget(bottom_right_tabs)
+        self.bottom_right_tabs.addTab(self.chat_widget, "LLM Chat")
+        self.bottom_right_tabs.addTab(self.terminal_widget, "Terminal")
+        right_splitter.addWidget(self.bottom_right_tabs)
 
         # Set initial sizes for the splitters
         main_splitter.setSizes([250, 950])
@@ -214,6 +217,111 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Successfully indexed {os.path.basename(file_path)}.", 5000)
         else:
             self.status_bar.showMessage(f"Failed to index {os.path.basename(file_path)}.", 5000)
+
+    def _execute_code_in_terminal(self, code: str):
+        """Receives code, saves it to a temp file, and executes it in the terminal."""
+        if not code:
+            return
+
+        try:
+            # Sanitize the code to handle multiple issues:
+            # 1. Replace non-standard line breaks
+            sanitized_code = code.replace('\u2029', '\n').strip()
+
+            # 2. Strip markdown code block fences
+            if sanitized_code.startswith('```python'):
+                sanitized_code = sanitized_code[9:] # len('```python')
+            if sanitized_code.startswith('```'):
+                sanitized_code = sanitized_code[3:]
+            if sanitized_code.endswith('```'):
+                sanitized_code = sanitized_code[:-3]
+
+            sanitized_code = sanitized_code.strip()
+
+            # Create a temporary file to hold the code
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.py', encoding='utf-8') as temp_file:
+                temp_file.write(sanitized_code)
+                temp_file_path = temp_file.name
+
+            # Get the path to the current python executable (to respect the venv)
+            python_executable = sys.executable
+
+            # Construct a robust command for PowerShell:
+            # 1. Execute the python script, redirecting stderr to stdout (2>&1)
+            # 2. Capture all output into the $output variable
+            # 3. Explicitly write the captured output to the pipeline
+            # 4. Remove the temporary file, ignoring errors if it's already gone
+            command = f"$output = & \"{python_executable}\" \"{temp_file_path}\" 2>&1; Write-Output $output; Remove-Item \"{temp_file_path}\" -ErrorAction SilentlyContinue"
+
+            self.bottom_right_tabs.setCurrentWidget(self.terminal_widget)
+            self.terminal_widget.execute_command(command)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Execution Error", f"Failed to execute code: {e}")
+
+    def _handle_ai_file_change(self, action: dict):
+        """Handles a file modification action requested by the AI."""
+        action_type = action.get("type")
+        file_path = action.get("file_path")
+        content = action.get("content", "")
+
+        if not action_type or not file_path:
+            QMessageBox.warning(self, "Invalid Action", "AI proposed an invalid file action.")
+            return
+
+        # Ensure the file path is relative to the project root
+        # and prevent directory traversal attacks.
+        project_root = os.path.abspath(QDir.currentPath())
+        full_path = os.path.abspath(os.path.join(project_root, file_path))
+        if not full_path.startswith(project_root):
+            QMessageBox.critical(self, "Security Error", "Attempted file access outside the project directory.")
+            return
+
+        # Create directories if they don't exist for file creation
+        if action_type in ["CREATE_FILE", "OVERWRITE_FILE"]:
+            try:
+                dir_name = os.path.dirname(full_path)
+                if not os.path.exists(dir_name):
+                    os.makedirs(dir_name)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not create directory: {e}")
+                return
+
+        # Ask for user confirmation
+        confirm_text = f"The AI wants to perform the following action:\n\n"
+        confirm_text += f"Type: {action_type}\n"
+        confirm_text += f"File: {file_path}\n\n"
+        confirm_text += "Do you want to proceed?"
+
+        reply = QMessageBox.question(self, f"Confirm AI Action: {action_type}", confirm_text, 
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                                     QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.No:
+            self.status_bar.showMessage("AI action cancelled by user.", 4000)
+            return
+
+        # Execute the action
+        try:
+            if action_type == "CREATE_FILE" or action_type == "OVERWRITE_FILE":
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                self.status_bar.showMessage(f"Successfully wrote to {file_path}", 5000)
+                # If the editor is open, prompt to reload
+                self.code_editor.check_and_reload_file(full_path)
+
+            elif action_type == "DELETE_FILE":
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                    self.status_bar.showMessage(f"Successfully deleted {file_path}", 5000)
+                else:
+                    self.status_bar.showMessage(f"File not found for deletion: {file_path}", 4000)
+            
+            # Refresh the file navigator to show the change
+            self.tree.model().setRootPath(QDir.currentPath()) # This forces a refresh
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to perform AI action: {e}")
 
     def _create_status_bar(self):
         """Creates and configures the status bar."""

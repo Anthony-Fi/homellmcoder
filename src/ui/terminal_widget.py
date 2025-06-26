@@ -73,6 +73,14 @@ class TerminalWidget(QWidget):
         else:
             QTextEdit.keyPressEvent(self.terminal, event)
 
+    def execute_command(self, command: str):
+        """Writes a command to the terminal process to be executed."""
+        if self.process.state() == QProcess.ProcessState.Running:
+            # Ensure the command ends with a newline to be executed
+            if not command.endswith('\n'):
+                command += '\n'
+            self.process.write(command.encode('utf-8'))
+
     def process_finished(self):
         self.terminal.append("\n[Process finished]")
 
