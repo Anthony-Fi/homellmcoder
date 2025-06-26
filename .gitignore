@@ -71,3 +71,22 @@ out/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+/venv
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+develop-eggs/
+.eggs/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg

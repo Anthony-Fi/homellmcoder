@@ -71,8 +71,8 @@ Write-Header "Activating virtual environment"
 . $activateScript
 
 # Upgrade pip
-Write-Header "Upgrading pip"
-python -m pip install --upgrade pip
+Write-Header "Upgrading build tools"
+python -m pip install --upgrade pip setuptools wheel
 
 # Install requirements
 Write-Header "Installing Python dependencies"

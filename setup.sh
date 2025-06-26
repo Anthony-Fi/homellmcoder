@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Stop on first error
@@ -59,8 +60,8 @@ source "$VENV_PATH/bin/activate"
 
 :activate_env
 # Upgrade pip
-print_header "Upgrading pip"
-python -m pip install --upgrade pip
+print_header "Upgrading build tools"
+python -m pip install --upgrade pip setuptools wheel
 
 # Install requirements
 print_header "Installing Python dependencies"
