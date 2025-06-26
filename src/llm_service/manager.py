@@ -1,90 +1,67 @@
 import os
-import pathlib
 import logging
-from typing import List, Dict, Optional
+from pathlib import Path
+import ollama
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class LocalLLMManager:
-    """Manages local LLM models, including discovery, download, and loading."""
+    """Manages the discovery and loading of local language models via Ollama."""
 
-    def __init__(self, model_dir: Optional[str] = None):
-        """
-        Initializes the manager.
+    def __init__(self):
+        """Initializes the LLM manager."""
+        self.loaded_model = None
+        self.client = self._get_ollama_client()
 
-        Args:
-            model_dir: The directory to store models. If None, uses a default directory.
-        """
-        if model_dir:
-            self.model_dir = pathlib.Path(model_dir)
-        else:
-            self.model_dir = pathlib.Path.home() / ".homellmcoder" / "models"
-        
-        self._create_model_dir()
-
-    def _create_model_dir(self):
-        """Creates the model directory if it doesn't exist."""
+    def _get_ollama_client(self):
+        """Establishes connection with the Ollama service."""
         try:
-            self.model_dir.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Model directory is set to: {self.model_dir}")
-        except OSError as e:
-            logging.error(f"Failed to create model directory at {self.model_dir}: {e}")
-            raise
+            client = ollama.Client()
+            # The following line is a health check to see if the service is responsive
+            client.list()
+            logging.info("Successfully connected to Ollama service.")
+            return client
+        except Exception as e:
+            logging.error(f"Failed to connect to Ollama service. Please ensure Ollama is running. Error: {e}")
+            return None
 
-    def discover_models(self) -> List[str]:
-        """
-        Discovers available models in the model directory.
-        (This is a stub and can be expanded to read metadata)
-        """
-        if not self.model_dir.exists():
+    def discover_models(self) -> list[str]:
+        """Discovers available models from the Ollama service."""
+        if not self.client:
+            logging.warning("Cannot discover models, Ollama client not available.")
             return []
         
-        # Simple discovery: list subdirectories
-        models = [d.name for d in self.model_dir.iterdir() if d.is_dir()]
-        logging.info(f"Discovered models: {models}")
-        return models
-
-    def download_model(self, model_id: str) -> bool:
-        """
-        Downloads a model. (This is a stub)
-        
-        Args:
-            model_id: The identifier of the model to download (e.g., from Hugging Face).
-
-        Returns:
-            True if download is successful, False otherwise.
-        """
-        logging.info(f"Attempting to download model: {model_id}")
-        # Placeholder for download logic (e.g., using huggingface_hub)
-        # For now, we'll just create a dummy directory.
-        model_path = self.model_dir / model_id
         try:
-            model_path.mkdir(exist_ok=True)
-            # Create a dummy file to represent the model
-            (model_path / "config.json").touch()
-            logging.info(f"Successfully 'downloaded' model to {model_path}")
-            return True
-        except OSError as e:
-            logging.error(f"Failed to create dummy model directory for {model_id}: {e}")
-            return False
+            models = self.client.list()['models']
+            model_names = [model['name'] for model in models]
+            logging.info(f"Discovered models: {model_names}")
+            return model_names
+        except Exception as e:
+            logging.error(f"An error occurred while discovering models: {e}")
+            return []
 
-    def load_model(self, model_id: str) -> Optional[object]:
-        """
-        Loads a model into memory. (This is a stub)
+    def load_model(self, model_name: str) -> dict:
+        """'Loads' a model by verifying its existence and preparing for use."""
+        if not self.client:
+            return {"status": "error", "message": "Ollama client not available."}
 
-        Args:
-            model_id: The name of the model to load.
+        if not model_name:
+            return {"status": "error", "message": "No model name provided."}
 
-        Returns:
-            A model object, or None if loading fails.
-        """
-        model_path = self.model_dir / model_id
-        if not model_path.exists():
-            logging.error(f"Model '{model_id}' not found at {model_path}")
-            return None
-        
-        logging.info(f"Loading model '{model_id}' from {model_path}")
-        # Placeholder for model loading logic (e.g., using transformers)
-        # For now, return a dummy object
-        return object()
+        try:
+            # For Ollama, 'loading' is implicit. We just verify the model exists.
+            # A more robust check might involve a quick interaction.
+            self.client.show(model_name)
+            self.loaded_model = model_name
+            logging.info(f"Model '{model_name}' is ready for use.")
+            return {"status": "success", "message": f"Model '{model_name}' loaded."}
+        except ollama.ResponseError as e:
+            logging.error(f"Failed to load model '{model_name}'. Error: {e.error}")
+            return {"status": "error", "message": f"Model '{model_name}' not found or invalid."}
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while loading model '{model_name}': {e}")
+            return {"status": "error", "message": "An unexpected error occurred."}
+
+    def get_loaded_model(self):
+        """Returns the name of the currently loaded model."""
+        return self.loaded_model

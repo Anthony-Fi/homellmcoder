@@ -5,6 +5,9 @@ pandas==2.2.2
 python-dotenv==1.0.0
 requests==2.31.0
 
+# LLM / AI
+ollama==0.2.1
+
 # GUI Framework
 PyQt6==6.7.0
 
