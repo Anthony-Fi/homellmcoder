@@ -80,8 +80,8 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
 dist/
+build/
 develop-eggs/
 .eggs/
 parts/
@@ -90,3 +90,13 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# PyInstaller
+#  Usually ignored by cpython's rule, but you can list this one explicitly
+#  *.spec
+dist/
+build/
+*.egg-info/
+*.spec
+
+# Installer logs
