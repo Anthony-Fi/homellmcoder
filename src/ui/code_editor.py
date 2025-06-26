@@ -1,7 +1,7 @@
 import os
-from PyQt6.QtWidgets import QTabWidget, QTextEdit, QVBoxLayout, QWidget, QMenu, QMessageBox
-from PyQt6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor
-from PyQt6.QtCore import QRegularExpression, pyqtSignal
+from PyQt6.QtWidgets import QTabWidget, QTextEdit, QVBoxLayout, QWidget, QMenu, QMessageBox, QPlainTextEdit
+from PyQt6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QPainter, QMouseEvent
+from PyQt6.QtCore import QRegularExpression, pyqtSignal, QRect, QSize, Qt
 
 class PythonHighlighter(QSyntaxHighlighter):
     """A simple syntax highlighter for Python code."""
@@ -48,19 +48,175 @@ class PythonHighlighter(QSyntaxHighlighter):
                 match = match_iterator.next()
                 self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
-class CodeEditor(QTextEdit):
-    """A basic code editor widget that uses the PythonHighlighter."""
+class LineNumberArea(QWidget):
+    """A widget that displays line numbers for a QTextEdit."""
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
+
+    def sizeHint(self):
+        return QSize(self.editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event):
+        self.editor.line_number_area_paint_event(event)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        self.editor.line_number_area_mouse_press_event(event)
+
+
+class CodeEditor(QPlainTextEdit):
+    """A code editor widget with syntax highlighting and line numbers."""
     code_executed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         font = QFont("Consolas", 11)
         self.setFont(font)
+
+        self.line_number_area = LineNumberArea(self)
         self.highlighter = PythonHighlighter(self.document())
 
+        self.blockCountChanged.connect(self.update_line_number_area_width)
+        self.updateRequest.connect(self.update_line_number_area)
+        self.cursorPositionChanged.connect(self.highlight_current_line)
+        self.textChanged.connect(self.scan_for_folding_regions)
+
+        self.folding_regions = {}
+        self.update_line_number_area_width(0)
+        self.highlight_current_line()
+        self.scan_for_folding_regions()
+
+    def line_number_area_width(self):
+        digits = 1
+        max_num = max(1, self.blockCount())
+        while max_num >= 10:
+            max_num //= 10
+            digits += 1
+        # Padding: folding marker(M) + 5px + line numbers + 5px
+        space = self.fontMetrics().horizontalAdvance('M') + 5 + self.fontMetrics().horizontalAdvance('9') * digits + 5
+        return space
+
+    def update_line_number_area_width(self, _):
+        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+
+    def update_line_number_area(self, rect, dy):
+        if dy:
+            self.line_number_area.scroll(0, dy)
+        else:
+            self.line_number_area.update(0, rect.y(), self.line_number_area.width(), rect.height())
+
+        if rect.contains(self.viewport().rect()):
+            self.update_line_number_area_width(0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self.line_number_area.setGeometry(QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
+
+    def line_number_area_paint_event(self, event):
+        painter = QPainter(self.line_number_area)
+        painter.fillRect(event.rect(), QColor("#f0f0f0"))
+
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        bottom = top + self.blockBoundingRect(block).height()
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                # Draw folding marker
+                if block_number in self.folding_regions:
+                    painter.setPen(QColor("#606060"))
+                    marker_rect = QRect(0, int(top), self.fontMetrics().horizontalAdvance('M'), self.fontMetrics().height())
+                    if block.next().isVisible(): # Unfolded
+                        painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "−") # Use minus sign
+                    else: # Folded
+                        painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "+")
+
+                # Draw line number
+                number = str(block_number + 1)
+                painter.setPen(QColor("#a0a0a0"))
+                number_x_start = self.fontMetrics().horizontalAdvance('M') + 5
+                number_width = self.line_number_area.width() - number_x_start - 5
+                number_rect = QRect(number_x_start, int(top), number_width, self.fontMetrics().height())
+                painter.drawText(number_rect, Qt.AlignmentFlag.AlignRight, number)
+
+            block = block.next()
+            top = bottom
+            bottom = top + self.blockBoundingRect(block).height()
+            block_number += 1
+
+    def line_number_area_mouse_press_event(self, event: QMouseEvent):
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        bottom = top + self.blockBoundingRect(block).height()
+
+        while block.isValid() and top <= event.position().y():
+            if top <= event.position().y() <= bottom:
+                # Check if the click is on the folding marker area
+                marker_width = self.fontMetrics().horizontalAdvance('M')
+                if event.position().x() <= marker_width:
+                    if block_number in self.folding_regions:
+                        self.toggle_fold(block_number)
+                break
+            block = block.next()
+            top = bottom
+            bottom = top + self.blockBoundingRect(block).height()
+            block_number += 1
+
+    def scan_for_folding_regions(self):
+        self.folding_regions = {}
+        indent_stack = []
+        block = self.document().firstBlock()
+
+        while block.isValid():
+            text = block.text()
+            indent_level = len(text) - len(text.lstrip())
+
+            if indent_level > (indent_stack[-1][1] if indent_stack else -1):
+                indent_stack.append((block.blockNumber(), indent_level))
+
+            while indent_stack and indent_level < indent_stack[-1][1]:
+                start_block_num, _ = indent_stack.pop()
+                end_block = block.previous()
+                self.folding_regions[start_block_num] = end_block.blockNumber()
+
+            block = block.next()
+
+        while indent_stack:
+            start_block_num, _ = indent_stack.pop()
+            end_block = self.document().lastBlock()
+            self.folding_regions[start_block_num] = end_block.blockNumber()
+
+    def toggle_fold(self, start_block_num):
+        if start_block_num not in self.folding_regions:
+            return
+
+        end_block_num = self.folding_regions[start_block_num]
+        start_block = self.document().findBlockByNumber(start_block_num)
+        should_show = not start_block.next().isVisible()
+
+        block = start_block.next()
+        while block.isValid() and block.blockNumber() <= end_block_num:
+            block.setVisible(should_show)
+            block = block.next()
+        self.line_number_area.update()
+
+    def highlight_current_line(self):
+        extra_selections = []
+        if not self.isReadOnly():
+            selection = QTextEdit.ExtraSelection()
+            line_color = QColor("#e8e8e8")
+            selection.format.setBackground(line_color)
+            selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
+            selection.cursor = self.textCursor()
+            selection.cursor.clearSelection()
+            extra_selections.append(selection)
+        self.setExtraSelections(extra_selections)
+
     def contextMenuEvent(self, event):
-        """Creates a context menu for the editor."""
-        menu = QMenu(self)
+        menu = self.createStandardContextMenu()
         execute_action = menu.addAction("Execute Selection")
         execute_action.setEnabled(self.textCursor().hasSelection())
         action = menu.exec(event.globalPos())
