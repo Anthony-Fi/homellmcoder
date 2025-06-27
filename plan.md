@@ -44,6 +44,18 @@ This plan will be executed step-by-step. Completed tasks will be marked with `[x
 *   [ ] Task 2
 *   [ ] **Test:** (How to verify this milestone is complete?)
 
+### Milestone 4: AI Prompt Improvement
+
+*   [x] Update distributable app in the dist folder to current version for standalone testing
+*   [x] Improve AI plan generation logic to avoid duplicate/empty file operations
+*   [ ] Add visible AI activity/idle indicator to the UI
+*   [ ] Persist chat and history data (save/restore chat sessions)
+*   [x] Create src/ui/load_model_thread.py to implement LoadModelThread
+*   [ ] **Test:** (How to verify this milestone is complete?)
+
+## Current Goal
+Add visible AI activity/idle indicator to the UI
+
 ## 4. Future Improvements & Ideas
 
 *   (e.g., User profiles)

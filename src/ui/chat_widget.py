@@ -1,9 +1,11 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel, QScrollArea, QFrame, QMessageBox
-from PyQt6.QtCore import pyqtSignal, QObject, QThread, Qt, QTimer
-from PyQt6.QtGui import QColor, QPalette, QKeyEvent, QFont
+from PyQt6.QtCore import pyqtSignal, QObject, QThread, Qt, QTimer, QSize
+from PyQt6.QtGui import QColor, QPalette, QKeyEvent, QFont, QPainter, QBrush
 import re
 import os
 import json
+import logging
+import traceback
 
 class ChatWorker(QObject):
     """A worker that runs the chat stream in a separate thread."""
@@ -18,16 +20,15 @@ class ChatWorker(QObject):
 
     def run(self):
         """Executes the chat stream and emits signals with the results."""
-        def stream_callback(response):
-            status = response.get("status")
-            if status == "chunk":
-                self.chunk_received.emit(response.get("content", ""))
-            elif status == "done":
-                self.finished.emit()
-            elif status == "error":
-                self.error.emit(response.get("message", "Unknown error"))
-
-        self.llm_manager.chat_stream(self.prompt, stream_callback)
+        try:
+            # get_response is a generator, so we iterate over it
+            for chunk in self.llm_manager.get_response(self.prompt):
+                self.chunk_received.emit(chunk)
+            self.finished.emit()
+        except Exception as e:
+            # Log the full error for debugging
+            logging.error(f"Error in ChatWorker: {e}\n{traceback.format_exc()}")
+            self.error.emit(str(e))
 
 class ChatBubble(QWidget):
     """A chat bubble for displaying a single message."""
@@ -35,65 +36,75 @@ class ChatBubble(QWidget):
 
     def __init__(self, text, is_user, parent=None):
         super().__init__(parent)
+        self.is_user = is_user
+
+        # --- Layout and Core Widget --- #
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 5, 10, 5)
-
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
-        self.text_edit.setPlainText(text)
         self.text_edit.setFrameStyle(QFrame.Shape.NoFrame)
-
-        # Styling based on who sent the message
-        palette = self.text_edit.palette()
-        if is_user:
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-            palette.setColor(QPalette.ColorRole.Base, QColor("#DCF8C6"))
-        else:
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            palette.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
-        self.text_edit.setPalette(palette)
-        self.text_edit.setAutoFillBackground(True)
-
+        self.text_edit.setStyleSheet("background:transparent; border: none;")
         self.layout.addWidget(self.text_edit)
 
-        # Add 'Apply Change' button for AI messages
-        if not is_user:
+        # --- Styling and Button Logic --- #
+        if self.is_user:
+            # User messages are simple: apply style and set text.
+            self.setStyleSheet("background-color: #DCF8C6; border-radius: 10px;")
+        else:
+            # AI messages get the 'Apply Change' button.
+            self.setStyleSheet("background-color: #FFFFFF; border-radius: 10px;")
             self.apply_button = QPushButton("Apply Change")
             self.apply_button.setFixedWidth(100)
-            self.apply_button.setVisible(False) # Hidden by default
+            self.apply_button.setVisible(False) # Hidden until a JSON block is detected
             self.layout.addWidget(self.apply_button)
 
-    def append_text(self, text_chunk):
-        """Appends a chunk of text to the chat bubble, used for streaming."""
-        current_text = self.text_edit.toPlainText()
-        self.text_edit.setPlainText(current_text + text_chunk)
-        self.set_text(self.text_edit.toPlainText())
+        self.set_text(text)
 
     def set_text(self, text):
-        """Sets the text of the bubble and checks for file action JSON."""
-        self.text_edit.setPlainText(text)
+        """Sets the text of the chat bubble and updates button visibility for AI messages."""
+        self.text_edit.setMarkdown(text)
 
-        # Use regex to find a JSON block for file operations
-        match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
-        if match:
+        # The 'Apply Change' button logic only runs for AI messages.
+        if not self.is_user:
+            self.update_apply_button_visibility(text)
+
+    def append_text(self, text_chunk):
+        """Appends a chunk of text to the chat bubble, used for streaming AI responses."""
+        current_text = self.text_edit.toPlainText() + text_chunk
+        self.set_text(current_text)
+
+    def update_apply_button_visibility(self, text):
+        """Shows or hides the 'Apply Change' button based on the presence of valid JSON."""
+        # This method should only be called for AI bubbles, so self.apply_button exists.
+        json_block_found = '```json' in text
+        
+        if json_block_found:
             try:
-                action_json_str = match.group(1)
-                action_data = json.loads(action_json_str)
-                
-                # Basic validation of the action format
-                if 'type' in action_data and 'file_path' in action_data:
+                json_str = text.split('```json')[1].split('```')[0]
+                data = json.loads(json_str)
+
+                # Check if the JSON structure is a valid, actionable request
+                if 'actions' in data and isinstance(data['actions'], list):
                     self.apply_button.setVisible(True)
-                    # Ensure we don't have duplicate connections
+                    # Re-connect signal to ensure it has the latest data
                     try:
                         self.apply_button.clicked.disconnect()
-                    except TypeError: # Raised if no connections exist
-                        pass
-                    self.apply_button.clicked.connect(lambda: self.change_requested.emit(action_data))
+                    except TypeError:
+                        pass # No connection existed
+                    self.apply_button.clicked.connect(lambda: self.change_requested.emit(data))
+                    return # Exit after successful setup
 
-            except (json.JSONDecodeError, KeyError):
-                self.apply_button.setVisible(False)
-        else:
-            self.apply_button.setVisible(False)
+            except (json.JSONDecodeError, IndexError):
+                # Malformed JSON or text structure, hide the button.
+                pass
+
+        # Default to hidden if no valid JSON is found.
+        self.apply_button.setVisible(False)
+
+    def get_data(self):
+        """Returns the bubble's data for serialization."""
+        return {"is_user": self.is_user, "text": self.text_edit.toPlainText()}
 
 class ChatInputBox(QTextEdit):
     """A custom QTextEdit that sends a message on Enter and adds a newline on Ctrl+Enter."""
@@ -117,52 +128,62 @@ class ChatInputBox(QTextEdit):
         else:
             super().keyPressEvent(event) # Default behavior for all other keys
 
+class AIStatusIndicator(QWidget):
+    """A widget that displays a colored circle to indicate AI status."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._is_busy = False
+        self.setFixedSize(16, 16) # Small, fixed size circle
+
+    def set_busy(self, busy):
+        """Sets the busy status and triggers a repaint."""
+        if self._is_busy != busy:
+            self._is_busy = busy
+            self.update() # Schedule a repaint
+
+    def paintEvent(self, event):
+        """Paints the circle with the appropriate color."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        color = QColor("green") if self._is_busy else QColor("red")
+        painter.setBrush(QBrush(color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        
+        # Draw a circle in the center of the widget
+        rect = self.rect()
+        painter.drawEllipse(rect)
+
+    def sizeHint(self):
+        return QSize(16, 16)
+
 class LLMChatWidget(QWidget):
     """A widget for interacting with the loaded LLM."""
     change_requested = pyqtSignal(dict)
 
     # System prompt to guide the AI to produce structured file modification commands
-    SYSTEM_PROMPT = ("""You are an expert AI programmer and a helpful assistant. Your goal is to help the user build, debug, and enhance their software projects.
+    SYSTEM_PROMPT = ("""You are a file-operation AI. You ONLY respond with JSON.
 
-When asked to create or modify files, you MUST follow these rules:
-1.  **Analyze the Request:** Carefully understand the user's goal.
-2.  **Review Existing Files:** Before creating a new file, ALWAYS check if a file with a similar purpose already exists. Do not create duplicates.
-3.  **Avoid Empty Files:** NEVER generate a `create_file` operation with empty or placeholder content. If you don't have the content, ask the user for more details instead.
-4.  **Consolidate Changes:** If the user's request requires multiple related changes (e.g., creating an HTML file and a corresponding CSS file), group them into a single, logical plan.
-5.  **Use Correct JSON Format:** Ensure all file operations are enclosed in a single, valid JSON block with properly escaped characters (e.g., use `\\n` for newlines).
+**CRITICAL RULE: For a new project, your FIRST and ONLY response MUST be JSON to create `plan.md`.**
 
-You can respond in two ways:
-- **For file operations:** Respond with a single JSON object containing a list of actions (`create_file`, `edit_file`, `delete_file`).
-  ```json
-  {
-    "actions": [
-      {
-        "action": "create_file",
-        "path": "path/to/new_file.txt",
-        "content": "Initial content for the file.\\nThis is a new line."
-      }
-    ]
-  }
-  ```
-- **For all other conversation:** For any other conversation, code explanation, or questions that do not involve file manipulation, you can respond normally as a helpful AI assistant.
+Example `plan.md` creation:
+```json
+{
+  "actions": [
+    {
+      "action": "create_file",
+      "path": "plan.md",
+      "content": "# Project Plan\\n\\n- [ ] Step 1: Set up an industry-standard project structure (e.g., src, tests, docs).\\n- [ ] Step 2: Implement core feature A.\\n- [ ] Step 3: Write tests for core feature A."
+    }
+  ]
+}
+```
 
-When the user asks you to create a new application, website, or program, you MUST adopt a project manager role and follow these steps:
-1.  **Make a Plan:** Start by creating a high-level project plan. Outline the major components, features, and development stages.
-2.  **Ask for Requirements:** Actively ask the user for the required functionality. Understand that these requirements may change, and be prepared to amend the plan accordingly.
-3.  **Use Industry Standards:** Follow standard procedures for software development, including creating a logical project structure, using a virtual environment, and managing dependencies (e.g., in a `requirements.txt` or `package.json` file).
-4.  **Prioritize Security:** From the beginning, consider security best practices relevant to the type of application being built.
-5.  **Integrate Testing:** Plan for testing from the start. Propose creating a test suite with unit tests to find faults early and ensure code quality.
-6.  **Propose Enhancements:** Suggest additional features or improvements that would benefit the project, such as logging, configuration management, or a more robust architecture.
-7.  **Communicate Clearly:** Provide regular progress updates against the plan and explain your technical decisions. If a user's request is ambiguous, ask for clarification before proceeding.
-8.  **Manage Dependencies:** When you add a new library, explicitly state it and propose the necessary update to the project's dependency file (e.g., `requirements.txt`).
-9.  **Break Down Complex Tasks:** Divide large tasks into smaller, manageable chunks, and prioritize them based on the project's needs.
-10. **Ensure Code Quality:** Focus on writing clean, readable, and well-documented code. Regularly refactor code to improve its structure and maintainability.
+**ALL RESPONSES MUST BE JSON WRAPPED IN ```json ... ```**
 
-**Guiding Principles for Collaboration:**
-- **Be a Proactive Partner:** Don't just wait for instructions. Anticipate the user's next steps, suggest relevant libraries, and identify potential issues before they arise.
-- **Think Architecturally:** Consider the big picture. How do the pieces fit together? Is the design scalable and maintainable? Suggest design patterns and architectural improvements.
-- **Champion Code Quality:** Be passionate about clean code. Proactively suggest refactorings that improve readability, performance, or adherence to best practices. Explain the benefits of your suggestions.
-- **Foster Learning:** When you use a new tool, library, or concept, briefly explain it. Help the user grow their skills throughout the development process.
+If you need to talk, another AI will handle it. Your only job is to generate file operations as JSON.
+
+**VALID ACTIONS:** `create_file`, `edit_file`, `delete_file`, `create_directory`.
 """)
 
     def __init__(self, llm_manager=None, parent=None):
@@ -170,7 +191,11 @@ When the user asks you to create a new application, website, or program, you MUS
         self.llm_manager = llm_manager
         self.ai_bubble = None
         self.current_ai_response = ""
+        self.status_indicator = AIStatusIndicator()
+        self.history_path = self._get_history_path()
+        self.plan_exists = False
         self._init_ui()
+        self.load_history()
 
     def set_llm_manager(self, llm_manager):
         self.llm_manager = llm_manager
@@ -191,8 +216,22 @@ When the user asks you to create a new application, website, or program, you MUS
         self.input_box.send_message.connect(self.send_message)
         self.input_box.setFont(QFont("Segoe UI", 10))
 
+        # Create a layout for the input area
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(self.status_indicator)
+        input_layout.addWidget(self.input_box, 1) # Give the input box stretch factor
+
+        self.send_button = QPushButton("Send")
+        self.send_button.clicked.connect(self.send_message)
+        input_layout.addWidget(self.send_button)
+
         layout.addWidget(self.conversation_view)
-        layout.addWidget(self.input_box)
+        layout.addLayout(input_layout)
+
+    def on_plan_created(self):
+        """Slot to be called when plan.md is successfully created."""
+        self.plan_exists = True
+        logging.info("plan.md has been created. Switching to plan execution mode.")
 
     def send_message(self):
         """Sends the user's message to the LLM."""
@@ -204,17 +243,22 @@ When the user asks you to create a new application, website, or program, you MUS
             self.conversation_view_layout.addWidget(ChatBubble("<i style='color:red;'>Error: No model is loaded. Please select and load a model first.</i>", True))
             return
 
-        self.conversation_view_layout.addWidget(ChatBubble(f"<b style='color:#00008B;'>You:</b> {prompt}", True))
+        self.add_message_to_view(prompt, is_user=True)
         self.input_box.clear()
         self.input_box.setEnabled(False)
-        self.ai_bubble = ChatBubble("", False, self)
+        self.status_indicator.set_busy(True) # Set status to busy
+        self.ai_bubble = self.add_message_to_view("", is_user=False)
         self.ai_bubble.change_requested.connect(self.change_requested)
-        self.conversation_view_layout.addWidget(self.ai_bubble)
-        self.current_ai_response = "<b style='color:#006400;'>Assistant:</b> "
+        self.current_ai_response = ""
+
+        prompt_to_send = prompt
+        if not self.plan_exists:
+            prompt_to_send = f"CRITICAL: Your first and only task is to create a detailed `plan.md` file for the following user request. Do not generate any other code. USER REQUEST: '{prompt}'"
+            logging.info("Plan does not exist. Intercepting prompt to force plan creation.")
 
         # Run chat in a separate thread to keep UI responsive
         self.thread = QThread()
-        self.worker = ChatWorker(self.llm_manager, LLMChatWidget.SYSTEM_PROMPT + "\n" + prompt)
+        self.worker = ChatWorker(self.llm_manager, LLMChatWidget.SYSTEM_PROMPT + "\n" + prompt_to_send)
         self.worker.moveToThread(self.thread)
 
         self.worker.chunk_received.connect(self.append_chunk)
@@ -232,12 +276,95 @@ When the user asks you to create a new application, website, or program, you MUS
         self.conversation_view.verticalScrollBar().setValue(self.conversation_view.verticalScrollBar().maximum())
 
     def on_chat_finished(self):
-        """Re-enables input and cleans up the thread when chat is done."""
+        """Cleans up after the chat stream is finished."""
         self.input_box.setEnabled(True)
         self.input_box.setFocus()
+        self.status_indicator.set_busy(False) # Set status to idle
         self.thread.quit()
+        self.worker.deleteLater()
+        self.thread.deleteLater()
+        self.save_history() # Save history after each successful interaction
+
+        # After the full response is received, parse for file operations.
+        # First, try to find a markdown-wrapped JSON block.
+        json_str = None
+        json_match = re.search(r"```json\n(.*?)\n```", self.current_ai_response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Fallback: try to find raw JSON if no markdown block is found.
+            start_index = self.current_ai_response.find('{')
+            end_index = self.current_ai_response.rfind('}')
+            if start_index != -1 and end_index != -1 and start_index < end_index:
+                json_str = self.current_ai_response[start_index:end_index+1]
+                logging.warning("Found raw JSON without markdown wrapper. The AI may not be following instructions perfectly.")
+
+        if json_str:
+            try:
+                data = json.loads(json_str)
+                actions = data.get("actions", [])
+                if actions:
+                    self.change_requested.emit({"actions": actions})
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode JSON from AI response: {e}")
+                logging.error(f"Invalid JSON content: {json_str}")
 
     def on_chat_error(self, error_message):
-        """Displays an error and re-enables the input box."""
+        """Handles errors from the chat worker."""
         self.conversation_view_layout.addWidget(ChatBubble(f"<i style='color:red;'>Error: {error_message}</i>", False))
         self.on_chat_finished() # Re-enable input and clean up
+        self.save_history() # Also save on error to not lose context
+
+    def add_message_to_view(self, text, is_user):
+        """Adds a new chat bubble to the conversation view."""
+        bubble = ChatBubble(text, is_user, self)
+        bubble.change_requested.connect(self.change_requested.emit)
+        self.conversation_view_layout.addWidget(bubble)
+        QTimer.singleShot(10, self._scroll_to_bottom) # Scroll after the UI updates
+        return bubble
+
+    def load_history(self):
+        """Loads chat history from a file."""
+        if not os.path.exists(self.history_path):
+            return
+        try:
+            with open(self.history_path, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+            for message in history:
+                self.add_message_to_view(message['text'], message['is_user'])
+        except (json.JSONDecodeError, IOError) as e:
+            logging.error(f"Failed to load chat history: {e}")
+
+    def save_history(self):
+        """Saves the current chat history to a file."""
+        history = []
+        for i in range(self.conversation_view_layout.count()):
+            widget = self.conversation_view_layout.itemAt(i).widget()
+            if isinstance(widget, ChatBubble):
+                history.append(widget.get_data())
+
+        try:
+            os.makedirs(os.path.dirname(self.history_path), exist_ok=True)
+            with open(self.history_path, 'w', encoding='utf-8') as f:
+                json.dump(history, f, indent=2)
+        except IOError as e:
+            logging.error(f"Failed to save chat history: {e}")
+
+    def clear_history(self):
+        """Clears the chat history and removes all bubbles from the UI."""
+        self.conversation_view_widget = QWidget()
+        self.conversation_view_layout = QVBoxLayout(self.conversation_view_widget)
+        self.conversation_view_layout.addStretch()
+        self.conversation_view.setWidget(self.conversation_view_widget)
+        self.plan_exists = False
+        logging.info("Chat history cleared and workflow state reset to AWAITING_PLAN.")
+
+    def _get_history_path(self):
+        """Returns the path to the chat history file."""
+        config_dir = os.path.join(os.path.expanduser("~"), ".homellmcoder")
+        return os.path.join(config_dir, "chat_history.json")
+
+    def _scroll_to_bottom(self):
+        """Scrolls the conversation view to the bottom."""
+        scroll_bar = self.conversation_view.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.maximum())

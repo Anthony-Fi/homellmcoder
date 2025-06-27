@@ -10,9 +10,10 @@ class TerminalWidget(QWidget):
     (up/down arrows) and complex cursor movement are not yet supported.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, project_root=None, parent=None):
         super().__init__(parent)
         self.process = QProcess(self)
+        self.project_root = project_root
         self._init_ui()
         self._init_process()
         self.input_start_position = 0
@@ -30,6 +31,10 @@ class TerminalWidget(QWidget):
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.process_finished)
+
+        if self.project_root and os.path.isdir(self.project_root):
+            self.process.setWorkingDirectory(self.project_root)
+
         shell = "powershell.exe" if os.name == 'nt' else "/bin/sh"
         self.process.start(shell)
 
