@@ -5,8 +5,9 @@ HomeLLMCoder is a local-first, AI-powered integrated development environment (ID
 ## Features
 
 - 🤖 **Agentic AI Workflow** - Leverage a local LLM to generate, execute, and refine development plans.
-- � **Plan-Driven Development** - The AI creates a `plan.md` for each project, which it follows step-by-step.
-- �️ **Integrated Development Environment** - A seamless interface with a file navigator, tabbed code editor, and integrated terminal.
+- 💡 **Plan-Driven Development** - The AI creates a `project_plan.md` for each project, which it follows step-by-step.
+- 🚀 **Automated Environment Setup & Command Execution** - Agents can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`) for environment setup, dependency installation, and project scaffolding.
+- 💻 **Integrated Development Environment** - A seamless interface with a file navigator, tabbed code editor, and integrated terminal.
 - 💬 **Interactive LLM Chat** - Communicate with the AI to create plans, generate code, and manage your project.
 - 🔒 **Offline & Secure** - Operates entirely on your local machine, ensuring your code and data remain private.
 - 📂 **Project Management** - Easily create new projects, manage files, and switch between different project contexts.
@@ -16,9 +17,9 @@ HomeLLMCoder is a local-first, AI-powered integrated development environment (ID
 
 HomeLLMCoder uses a team of specialized AI agents to handle your requests. This ensures that each step of the process is handled by an expert.
 
-- **Manager Agent:** The project architect. It takes your high-level goal and creates a `plan.md` file that outlines the project and assigns tasks.
-- **Planner Agent:** The detail-oriented planner. It takes the `plan.md` and breaks down the tasks into a detailed, step-by-step execution plan.
-- **Coder Agent:** The programmer. It writes the code based on the detailed plan.
+- **Manager Agent:** The project architect. It takes your high-level goal and creates a `project_plan.md` file that outlines the project and assigns tasks.
+- **Planner Agent:** The detail-oriented planner. It takes the `project_plan.md` and breaks down the tasks into a detailed, step-by-step execution plan. The Planner's output is strictly `project_plan.md`.
+- **Coder Agent:** The programmer. It writes the code based on the detailed plan and can execute terminal commands (e.g., `pip install`, `npm install`, `php artisan migrate`) to set up environments, install dependencies, and scaffold projects.
 - **Refactor Agent:** The code quality expert. It improves existing code without changing its functionality.
 - **QA/Tester Agent:** The quality assurance specialist. It writes tests to ensure the code is bug-free.
 - **Docs Agent:** The technical writer. It generates documentation for the code.
@@ -106,7 +107,7 @@ homellmcoder/
 └── README.md           # This file
 ```
 
-## � Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to fork the repository, make your changes, and open a pull request.
 

@@ -109,6 +109,17 @@ Creates a new directory.
 }
 ```
 
+**`run_command`**
+
+Executes a shell command.
+
+```json
+{
+    "action": "run_command",
+    "command": "echo \"Hello World\""
+}
+```
+
 ### `create_file(self, file_path: str, content: str)`
 - **Description:** Creates a new file with the specified content. It also creates any necessary parent directories.
 - **Parameters:**

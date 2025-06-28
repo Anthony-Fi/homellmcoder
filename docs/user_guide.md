@@ -14,9 +14,9 @@ HomeLLMCoder uses a team of specialized AI agents to help you with your coding t
 
 1.  **Select the Manager Agent:** In the chat panel, use the dropdown menu to select the `Manager Agent`.
 2.  **Give the Manager a Goal:** In the chat input, describe the high-level goal for your project. For example: `Create a simple Python web server using Flask.`
-3.  **Review the Plan:** The Manager will create a `plan.md` file in your project's root directory. This file outlines the project and the tasks required to complete it. You can open this file in the editor to see the plan.
-4.  **Switch to the Planner Agent:** Once the plan is created, switch to the `Planner Agent`. The Planner will read the `plan.md` and provide a detailed, step-by-step guide to completing the tasks.
-5.  **Execute with Specialist Agents:** Use the other specialist agents, like the `Coder Agent` or `Docs Agent`, to execute the steps provided by the Planner.
+3.  **Review the Project Plan:** The Manager will create a `project_plan.md` file in your project's root directory. This file outlines the project and the tasks required to complete it. You can open this file in the editor to see the plan.
+4.  **Switch to the Planner Agent:** Once the initial `project_plan.md` is created, switch to the `Planner Agent`. The Planner will read the `project_plan.md` and refine it into a detailed, step-by-step execution plan. **Note:** The Planner's output is strictly an updated `project_plan.md`.
+5.  **Execute with Specialist Agents:** Use the other specialist agents, like the `Coder Agent` or `Docs Agent`, to execute the steps provided in the `project_plan.md`. The `Coder Agent` is now capable of executing terminal commands (e.g., `pip install`, `npm install`, `composer create-project`) directly from the plan to set up environments, install dependencies, and scaffold projects.
 
 ## Chatting with the AI
 

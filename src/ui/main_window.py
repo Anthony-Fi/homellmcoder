@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 from PyQt6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
@@ -21,6 +22,7 @@ from src.ui.file_navigator import FileNavigator
 from src.ui.code_editor import TabbedCodeEditor
 from src.ui.terminal_widget import TerminalWidget
 from src.ui.chat_widget import LLMChatWidget
+from src.ui.plan_widget import PlanWidget  # Import PlanWidget
 from src.llm_service.manager import LocalLLMManager
 from src.services.project_service import ProjectService
 from src.services.history_service import HistoryService
@@ -54,7 +56,7 @@ class MainWindow(QMainWindow):
         main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.setCentralWidget(main_vertical_splitter)
 
-        # Top horizontal splitter for file navigator, code editor, and chat
+        # Top horizontal splitter for file navigator, code editor, chat, and plan
         top_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_vertical_splitter.addWidget(top_horizontal_splitter)
 
@@ -65,17 +67,20 @@ class MainWindow(QMainWindow):
         self.code_editor = TabbedCodeEditor(self)
         top_horizontal_splitter.addWidget(self.code_editor)
 
-        self.chat_widget = LLMChatWidget(
-            self.llm_manager, self.history_service, self.file_operation_service, self
-        )
-        top_horizontal_splitter.addWidget(self.chat_widget)
-
-        # Bottom part: Terminal
+        # Bottom part: Terminal - Initialize before chat_widget
         self.terminal_widget = TerminalWidget(self)
         main_vertical_splitter.addWidget(self.terminal_widget)
 
+        self.chat_widget = LLMChatWidget(
+            self.llm_manager, self.history_service, self.file_operation_service, self, self.terminal_widget
+        )
+        top_horizontal_splitter.addWidget(self.chat_widget)
+
+        self.plan_widget = PlanWidget(self)  # Initialize PlanWidget
+        top_horizontal_splitter.addWidget(self.plan_widget)
+
         # Set initial sizes for the splitters
-        top_horizontal_splitter.setSizes([250, 650, 300])
+        top_horizontal_splitter.setSizes([250, 650, 300, 300])  # Adjust size for plan widget
         main_vertical_splitter.setSizes([600, 200])
 
     def _create_menus(self):
@@ -108,8 +113,31 @@ class MainWindow(QMainWindow):
         """Connect all signals to their slots in one place."""
         self.file_navigator.file_selected.connect(self.code_editor.open_file)
         self.file_navigator.project_root_changed.connect(self.on_project_root_changed)
-        # The chat_widget's internal _handle_ai_file_change now manages this.
-        # No direct connection needed here if the widget handles its own button clicks.
+        self.chat_widget.plan_updated.connect(self.plan_widget.set_plan_content)
+        self.plan_widget.run_planner_requested.connect(self._on_run_planner_requested)
+        self.plan_widget.run_coder_requested.connect(self._on_run_coder_requested)
+
+    def _on_run_coder_requested(self):
+        """Triggers the Coder agent with the current context."""
+        # 1. Get the instructions from the selected text in the plan
+        instructions = self.plan_widget.plan_view.textCursor().selectedText()
+        if not instructions:
+            QMessageBox.warning(self, "No Instructions", "Please select the task instructions from the plan before running the coder.")
+            return
+
+        # 2. Get the content of the currently active file
+        active_editor = self.code_editor.current_editor()
+        if not active_editor:
+            QMessageBox.warning(self, "No Active File", "Please open and select the file you want the coder to work on.")
+            return
+        file_content = active_editor.toPlainText()
+
+        # 3. Run the coder
+        self.chat_widget.run_coder_with_context(file_content, instructions)
+
+    def _on_run_planner_requested(self):
+        """Triggers the Planner agent with the current plan content."""
+        plan_content = self.plan_widget.get_plan_text()
 
     def on_project_root_changed(self, new_root):
         """Handles the project root change across the application."""
@@ -119,6 +147,25 @@ class MainWindow(QMainWindow):
         self.terminal_widget.set_project_root(new_root)
         self.status_bar_message.setText(f"Project: {new_root}")
         logging.info(f"MainWindow: Project root changed to {new_root}")
+        self._load_plan_from_file(new_root)
+
+    def _load_plan_from_file(self, project_root):
+        """Loads plan.md into the PlanWidget if it exists."""
+        if not project_root:
+            self.plan_widget.set_plan_content("")
+            return
+
+        plan_path = os.path.join(project_root, "plan.md")
+        if os.path.exists(plan_path):
+            try:
+                with open(plan_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.plan_widget.set_plan_content(content)
+            except Exception as e:
+                logging.error(f"Error loading plan.md: {e}")
+                self.plan_widget.set_plan_content(f"# Error loading plan.md\n\n{e}")
+        else:
+            self.plan_widget.set_plan_content("# No plan.md file found in this project.")
 
     def open_project_folder(self):
         """Opens a dialog to select a project folder."""

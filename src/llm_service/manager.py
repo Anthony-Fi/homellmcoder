@@ -25,6 +25,7 @@ SYSTEM_PROMPT = """You are an expert software engineering AI. Your primary goal 
   - `edit_file`: Edits an existing file (overwrites). Requires `path` and `content`.
   - `delete_file`: Deletes a file. Requires `path`.
   - `create_directory`: Creates a new directory. Requires `path`.
+  - `run_command`: Executes a shell command. Requires `command` (the command string).
 - Do **NOT** invent new actions. Only use the actions listed above.
 
 **JSON STRING CONTENT:**
