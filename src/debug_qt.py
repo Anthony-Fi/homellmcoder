@@ -8,10 +8,10 @@ app = QApplication(sys.argv)
 print("QApplication instance created.")
 
 window = QWidget()
-window.setWindowTitle('Standalone Test')
+window.setWindowTitle("Standalone Test")
 window.setGeometry(100, 100, 280, 80)
 
-helloMsg = QLabel('<h1>Hello, World!</h1>', parent=window)
+helloMsg = QLabel("<h1>Hello, World!</h1>", parent=window)
 helloMsg.move(60, 15)
 
 print("Window and label created.")

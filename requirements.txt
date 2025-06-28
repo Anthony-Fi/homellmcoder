@@ -1,7 +1,7 @@
 # Core Application Dependencies
 Flask==3.0.3
 numpy==2.0.1
-pandas==2.2.2
+pandas
 python-dotenv==1.0.0
 requests==2.31.0
 

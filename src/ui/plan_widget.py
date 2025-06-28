@@ -1,9 +1,11 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QPushButton
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont
 
+
 class PlanWidget(QWidget):
     """A widget to display and interact with the project plan."""
+
     generate_plan_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):

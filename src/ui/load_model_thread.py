@@ -1,7 +1,9 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 
+
 class LoadModelThread(QThread):
     """A QThread to handle loading the LLM model in the background."""
+
     finished = pyqtSignal(dict)
 
     def __init__(self, llm_manager, model_name):

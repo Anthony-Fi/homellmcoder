@@ -1,7 +1,7 @@
 import logging
-import os
 from pathlib import Path
 import sys
+
 
 def setup_logging():
     """Sets up a robust, file-based logging system for the application."""
@@ -12,11 +12,8 @@ def setup_logging():
     # Configure logging to write to a file and the console
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
+        format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)],
     )
 
     logging.info("--- Application Log Started ---")
@@ -26,6 +23,8 @@ def setup_logging():
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        logging.critical("Unhandled exception:", exc_info=(exc_type, exc_value, exc_traceback))
+        logging.critical(
+            "Unhandled exception:", exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
     sys.excepthook = handle_exception

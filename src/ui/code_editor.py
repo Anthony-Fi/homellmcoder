@@ -1,10 +1,26 @@
 import os
-from PyQt6.QtWidgets import QTabWidget, QTextEdit, QVBoxLayout, QWidget, QMenu, QMessageBox, QPlainTextEdit
-from PyQt6.QtGui import QFont, QSyntaxHighlighter, QTextCharFormat, QColor, QPainter, QMouseEvent
+from PyQt6.QtWidgets import (
+    QTextEdit,
+    QPlainTextEdit,
+    QWidget,
+    QVBoxLayout,
+    QMessageBox,
+    QTabWidget,
+)
+from PyQt6.QtGui import (
+    QFont,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QColor,
+    QPainter,
+    QMouseEvent,
+)
 from PyQt6.QtCore import QRegularExpression, pyqtSignal, QRect, QSize, Qt
+
 
 class PythonHighlighter(QSyntaxHighlighter):
     """A simple syntax highlighter for Python code."""
+
     def __init__(self, parent):
         super().__init__(parent)
         self.highlighting_rules = []
@@ -14,11 +30,39 @@ class PythonHighlighter(QSyntaxHighlighter):
         keyword_format.setForeground(QColor("#0000ff"))
         keyword_format.setFontWeight(QFont.Weight.Bold)
         keywords = [
-            "and", "as", "assert", "break", "class", "continue", "def",
-            "del", "elif", "else", "except", "False", "finally", "for",
-            "from", "global", "if", "import", "in", "is", "lambda",
-            "None", "nonlocal", "not", "or", "pass", "raise", "return",
-            "True", "try", "while", "with", "yield"
+            "and",
+            "as",
+            "assert",
+            "break",
+            "class",
+            "continue",
+            "def",
+            "del",
+            "elif",
+            "else",
+            "except",
+            "False",
+            "finally",
+            "for",
+            "from",
+            "global",
+            "if",
+            "import",
+            "in",
+            "is",
+            "lambda",
+            "None",
+            "nonlocal",
+            "not",
+            "or",
+            "pass",
+            "raise",
+            "return",
+            "True",
+            "try",
+            "while",
+            "with",
+            "yield",
         ]
         for word in keywords:
             pattern = QRegularExpression(f"\\b{word}\\b")
@@ -27,8 +71,8 @@ class PythonHighlighter(QSyntaxHighlighter):
         # Strings (red)
         string_format = QTextCharFormat()
         string_format.setForeground(QColor("#a31515"))
-        self.highlighting_rules.append((QRegularExpression('\".*?\"'), string_format))
-        self.highlighting_rules.append((QRegularExpression("\'.*?\'"), string_format))
+        self.highlighting_rules.append((QRegularExpression('".*?"'), string_format))
+        self.highlighting_rules.append((QRegularExpression("'.*?'"), string_format))
 
         # Comments (green)
         comment_format = QTextCharFormat()
@@ -38,7 +82,9 @@ class PythonHighlighter(QSyntaxHighlighter):
         # Numbers (dark cyan)
         number_format = QTextCharFormat()
         number_format.setForeground(QColor("#098658"))
-        self.highlighting_rules.append((QRegularExpression("\\b[0-9]+\\b"), number_format))
+        self.highlighting_rules.append(
+            (QRegularExpression("\\b[0-9]+\\b"), number_format)
+        )
 
     def highlightBlock(self, text):
         """Applies highlighting rules to a block of text."""
@@ -48,8 +94,10 @@ class PythonHighlighter(QSyntaxHighlighter):
                 match = match_iterator.next()
                 self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
+
 class LineNumberArea(QWidget):
     """A widget that displays line numbers for a QTextEdit."""
+
     def __init__(self, editor):
         super().__init__(editor)
         self.editor = editor
@@ -66,6 +114,7 @@ class LineNumberArea(QWidget):
 
 class CodeEditor(QPlainTextEdit):
     """A code editor widget with syntax highlighting and line numbers."""
+
     code_executed = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -93,7 +142,12 @@ class CodeEditor(QPlainTextEdit):
             max_num //= 10
             digits += 1
         # Padding: folding marker(M) + 5px + line numbers + 5px
-        space = self.fontMetrics().horizontalAdvance('M') + 5 + self.fontMetrics().horizontalAdvance('9') * digits + 5
+        space = (
+            self.fontMetrics().horizontalAdvance("M")
+            + 5
+            + self.fontMetrics().horizontalAdvance("9") * digits
+            + 5
+        )
         return space
 
     def update_line_number_area_width(self, _):
@@ -103,7 +157,9 @@ class CodeEditor(QPlainTextEdit):
         if dy:
             self.line_number_area.scroll(0, dy)
         else:
-            self.line_number_area.update(0, rect.y(), self.line_number_area.width(), rect.height())
+            self.line_number_area.update(
+                0, rect.y(), self.line_number_area.width(), rect.height()
+            )
 
         if rect.contains(self.viewport().rect()):
             self.update_line_number_area_width(0)
@@ -111,7 +167,9 @@ class CodeEditor(QPlainTextEdit):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         cr = self.contentsRect()
-        self.line_number_area.setGeometry(QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
+        self.line_number_area.setGeometry(
+            QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height())
+        )
 
     def line_number_area_paint_event(self, event):
         painter = QPainter(self.line_number_area)
@@ -127,18 +185,27 @@ class CodeEditor(QPlainTextEdit):
                 # Draw folding marker
                 if block_number in self.folding_regions:
                     painter.setPen(QColor("#606060"))
-                    marker_rect = QRect(0, int(top), self.fontMetrics().horizontalAdvance('M'), self.fontMetrics().height())
-                    if block.next().isVisible(): # Unfolded
-                        painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "−") # Use minus sign
-                    else: # Folded
+                    marker_rect = QRect(
+                        0,
+                        int(top),
+                        self.fontMetrics().horizontalAdvance("M"),
+                        self.fontMetrics().height(),
+                    )
+                    if block.next().isVisible():  # Unfolded
+                        painter.drawText(
+                            marker_rect, Qt.AlignmentFlag.AlignCenter, "−"
+                        )  # Use minus sign
+                    else:  # Folded
                         painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "+")
 
                 # Draw line number
                 number = str(block_number + 1)
                 painter.setPen(QColor("#a0a0a0"))
-                number_x_start = self.fontMetrics().horizontalAdvance('M') + 5
+                number_x_start = self.fontMetrics().horizontalAdvance("M") + 5
                 number_width = self.line_number_area.width() - number_x_start - 5
-                number_rect = QRect(number_x_start, int(top), number_width, self.fontMetrics().height())
+                number_rect = QRect(
+                    number_x_start, int(top), number_width, self.fontMetrics().height()
+                )
                 painter.drawText(number_rect, Qt.AlignmentFlag.AlignRight, number)
 
             block = block.next()
@@ -155,7 +222,7 @@ class CodeEditor(QPlainTextEdit):
         while block.isValid() and top <= event.position().y():
             if top <= event.position().y() <= bottom:
                 # Check if the click is on the folding marker area
-                marker_width = self.fontMetrics().horizontalAdvance('M')
+                marker_width = self.fontMetrics().horizontalAdvance("M")
                 if event.position().x() <= marker_width:
                     if block_number in self.folding_regions:
                         self.toggle_fold(block_number)
@@ -209,7 +276,9 @@ class CodeEditor(QPlainTextEdit):
             selection = QTextEdit.ExtraSelection()
             line_color = QColor("#e8e8e8")
             selection.format.setBackground(line_color)
-            selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
+            selection.format.setProperty(
+                QTextCharFormat.Property.FullWidthSelection, True
+            )
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
             extra_selections.append(selection)
@@ -225,8 +294,10 @@ class CodeEditor(QPlainTextEdit):
             selected_text = self.textCursor().selectedText()
             self.code_executed.emit(selected_text)
 
+
 class TabbedCodeEditor(QWidget):
     """A widget that contains multiple CodeEditor widgets in a tabbed view."""
+
     code_to_execute = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -247,7 +318,7 @@ class TabbedCodeEditor(QWidget):
                 return
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
         except Exception as e:
             print(f"Error opening file {file_path}: {e}")
@@ -263,24 +334,34 @@ class TabbedCodeEditor(QWidget):
         self.tab_widget.setCurrentIndex(index)
 
     def check_and_reload_file(self, file_path):
-        """Checks if a file is open in a tab and prompts the user to reload it if it has been modified externally."""
+        """Checks if a file is open and prompts the user to reload if modified."""
         abs_path = os.path.abspath(file_path)
         for i in range(self.tab_widget.count()):
             editor = self.tab_widget.widget(i)
             tab_path = editor.property("file_path")
             if tab_path and os.path.abspath(tab_path) == abs_path:
-                reply = QMessageBox.question(self, "File Changed", 
-                                             f"The file '{os.path.basename(file_path)}' has been modified externally.\n\nDo you want to reload it?",
-                                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                             QMessageBox.StandardButton.Yes)
+                reply = QMessageBox.question(
+                    self,
+                    "File Changed",
+                    (
+                        f"The file '{os.path.basename(file_path)}' has been modified "
+                        "externally.\n\nDo you want to reload it?"
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
                 if reply == QMessageBox.StandardButton.Yes:
                     try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, "r", encoding="utf-8") as f:
                             content = f.read()
                         editor.setPlainText(content)
-                        self.tab_widget.setTabText(i, os.path.basename(file_path)) # Reset tab text in case of rename
+                        self.tab_widget.setTabText(
+                            i, os.path.basename(file_path)
+                        )  # Reset tab text in case of rename
                     except Exception as e:
-                        QMessageBox.critical(self, "Error", f"Could not reload file: {e}")
+                        QMessageBox.critical(
+                            self, "Error", f"Could not reload file: {e}"
+                        )
                 break
 
     def close_tab(self, index):

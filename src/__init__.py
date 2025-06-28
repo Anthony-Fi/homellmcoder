@@ -5,4 +5,4 @@ HomeLLMCoder - A local AI coding assistant with a full-featured development envi
 # Version information
 from .version import __version__
 
-__all__ = ['__version__']
+__all__ = ["__version__"]

@@ -1,492 +1,191 @@
-import sys
-import shutil
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, 
-    QTextEdit, QSplitter, QTreeView, QLabel, QStatusBar,
-    QComboBox, QPushButton, QProgressBar, QTabWidget, QMenu, QInputDialog, QMessageBox, QFileDialog
-)
-from PyQt6.QtGui import QFileSystemModel, QAction
-from PyQt6.QtCore import Qt, QDir, QModelIndex
-import os
-import tempfile
 import logging
 import sys
-from pathlib import Path
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QVBoxLayout,
+    QSplitter,
+    QMessageBox,
+    QFileDialog,
+    QTabWidget,
+    QApplication,
+    QDialog,
+    QListWidget,
+    QDialogButtonBox,
+    QLabel,
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 
-# Add the project root to the Python path
-project_root = Path(__file__).parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-from src.llm_service.manager import LocalLLMManager
-from src.llm_service.rag import RAGSystem
+# Corrected absolute imports
+from src.ui.file_navigator import FileNavigator
 from src.ui.code_editor import TabbedCodeEditor
-from src.ui.chat_widget import LLMChatWidget
 from src.ui.terminal_widget import TerminalWidget
-from src.ui.load_model_thread import LoadModelThread
+from src.ui.chat_widget import LLMChatWidget
+from src.llm_service.manager import LocalLLMManager
+from src.services.project_service import ProjectService
+from src.services.history_service import HistoryService
+from src.services.file_operation_service import FileOperationService
 
-# Import version using absolute import
-try:
-    from src.version import __version__
-except ImportError:
-    # Fallback for when running as a package
-    from version import __version__
 
 class MainWindow(QMainWindow):
-    """Main application window with a three-panel layout."""
+    """Main application window."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"HomeLLMCoder v{__version__}")
+
+        # Initialize services
+        self.project_service = ProjectService()
+        self.history_service = HistoryService()
+        self.file_operation_service = FileOperationService()
+        self.llm_manager = LocalLLMManager()
+
+        self.setWindowTitle("HomeLLMCoder")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Initialize project root
-        self.project_root = QDir.currentPath()
-
-        # Initialize backend managers first, as UI components depend on them
-        try:
-            logging.info("Attempting to create LocalLLMManager instance.")
-            self.llm_manager = LocalLLMManager()
-            logging.info("LocalLLMManager instance created successfully.")
-        except Exception as e:
-            logging.critical(f"CRITICAL ERROR during LocalLLMManager instantiation: {e}", exc_info=True)
-            self.llm_manager = None
-        self.rag_system = RAGSystem()
-
-        # Initialize UI components
+        # Setup UI
         self._create_central_widget()
         self._create_menus()
         self._create_status_bar()
-
-        # Populate models after UI is created
-        self._populate_models()
+        self._connect_signals()
 
     def _create_central_widget(self):
-        """Creates the main layout."""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        """Creates and configures the main central widget with all UI components."""
+        # Main vertical splitter for the top content and the bottom terminal
+        main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.setCentralWidget(main_vertical_splitter)
 
-        # Create the main splitter
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(main_splitter)
+        # Top horizontal splitter for file navigator, code editor, and chat
+        top_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_vertical_splitter.addWidget(top_horizontal_splitter)
 
-        # Left panel: File Navigator
-        file_navigator = self._create_file_navigator()
-        main_splitter.addWidget(file_navigator)
+        # Populate the top horizontal splitter
+        self.file_navigator = FileNavigator(self)
+        top_horizontal_splitter.addWidget(self.file_navigator)
 
-        # Right panel: Code Editor and Terminal/Chat
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-        main_splitter.addWidget(right_splitter)
+        self.code_editor = TabbedCodeEditor(self)
+        top_horizontal_splitter.addWidget(self.code_editor)
 
-        # Top-right: Code Editor
-        self.code_editor = TabbedCodeEditor()
-        self.code_editor.code_to_execute.connect(self._execute_code_in_terminal)
-        right_splitter.addWidget(self.code_editor)
+        self.chat_widget = LLMChatWidget(
+            self.llm_manager, self.history_service, self.file_operation_service, self
+        )
+        top_horizontal_splitter.addWidget(self.chat_widget)
 
-        # Bottom-right: Tabbed view for Chat and Terminal
-        self.bottom_right_tabs = QTabWidget()
-        self.chat_widget = LLMChatWidget(self.llm_manager)
-        self.chat_widget.change_requested.connect(self._handle_ai_file_change)
-        self.terminal_tabs = QTabWidget()
-        self.terminal_tabs.setTabsClosable(True)
-        self.terminal_tabs.tabCloseRequested.connect(self.close_terminal_tab)
-        self.bottom_right_tabs.addTab(self.chat_widget, "LLM Chat")
-        self.bottom_right_tabs.addTab(self.terminal_tabs, "Terminal")
-        right_splitter.addWidget(self.bottom_right_tabs)
+        # Bottom part: Terminal
+        self.terminal_widget = TerminalWidget(self)
+        main_vertical_splitter.addWidget(self.terminal_widget)
 
         # Set initial sizes for the splitters
-        main_splitter.setSizes([250, 950])
-        right_splitter.setSizes([600, 200])
-
-    def _create_file_navigator(self) -> QWidget:
-        """Creates the file navigator panel."""
-        navigator_container = QWidget()
-        layout = QVBoxLayout(navigator_container)
-
-        model = QFileSystemModel()
-        # Set the root to empty to show all drives
-        model.setRootPath("")
-        model.setFilter(QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot | QDir.Filter.Hidden)
-
-        self.tree = QTreeView()
-        self.tree.setModel(model)
-        # The view will now start at the drive level
-
-        # --- Configure Tree View Appearance ---
-        self.tree.setAnimated(True)
-        self.tree.setIndentation(20)
-
-        self.tree.setColumnWidth(0, 200)
-        self.tree.setAlternatingRowColors(True)
-        self.tree.doubleClicked.connect(self._on_file_navigator_double_clicked)
-
-        # Enable and connect context menu
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._show_file_navigator_context_menu)
-
-        index_button = QPushButton("Index Selected File")
-        index_button.setToolTip("Index the selected file for RAG")
-        index_button.clicked.connect(self._index_selected_file)
-
-        layout.addWidget(self.tree)
-        layout.addWidget(index_button)
-        return navigator_container
+        top_horizontal_splitter.setSizes([250, 650, 300])
+        main_vertical_splitter.setSizes([600, 200])
 
     def _create_menus(self):
         """Creates the main menu bar."""
         menu_bar = self.menuBar()
+
+        # File Menu
         file_menu = menu_bar.addMenu("&File")
-
         open_folder_action = QAction("&Open Project Folder...", self)
-        open_folder_action.triggered.connect(self._open_project_folder)
+        open_folder_action.triggered.connect(self.open_project_folder)
         file_menu.addAction(open_folder_action)
-
         file_menu.addSeparator()
-
         exit_action = QAction("&Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Terminal Menu
-        terminal_menu = menu_bar.addMenu("&Terminal")
-        new_terminal_action = QAction("New Terminal", self)
-        new_terminal_action.triggered.connect(self.open_new_terminal)
-        terminal_menu.addAction(new_terminal_action)
-
-        show_terminal_action = QAction("Show Terminal", self)
-        show_terminal_action.triggered.connect(lambda: self.bottom_right_tabs.setCurrentWidget(self.terminal_tabs))
-        terminal_menu.addAction(show_terminal_action)
-
-    def _open_project_folder(self):
-        """Opens a dialog to select a project folder."""
-        directory = QFileDialog.getExistingDirectory(self, "Select Project Folder", QDir.currentPath())
-        if directory:
-            self._set_project_root(directory)
-
-    def _set_project_root(self, path):
-        """Sets the root directory for the file navigator and updates the UI."""
-        self.project_root = os.path.abspath(path)
-        self.tree.model().setRootPath(self.project_root)
-        self.tree.setRootIndex(self.tree.model().index(self.project_root))
-        self.project_root_label.setText(f"Project: {self.project_root}")
-        self.statusBar().showMessage(f"Project root set to {self.project_root}", 5000)
-        self.chat_widget.clear_history() # Clear chat history for the new project
-
-    def _show_file_navigator_context_menu(self, position):
-        """Creates and shows the context menu for the file navigator."""
-        index = self.tree.indexAt(position)
-        if not index.isValid():
-            return
-
-        menu = QMenu()
-        file_path = self.tree.model().filePath(index)
-
-        # Add 'Set as Project Root' action only for directories
-        if os.path.isdir(file_path):
-            set_as_root_action = QAction("Set as Project Root", self)
-            set_as_root_action.triggered.connect(lambda: self._set_project_root(file_path))
-            menu.addAction(set_as_root_action)
-            menu.addSeparator()
-
-        new_file_action = QAction("New File...")
-        new_file_action.triggered.connect(lambda: self._create_new_file(file_path))
-        menu.addAction(new_file_action)
-        new_folder_action = menu.addAction("New Folder...")
-        new_folder_action.triggered.connect(lambda: self._create_new_folder(file_path))
-        menu.addSeparator()
-        rename_action = menu.addAction("Rename...")
-        rename_action.triggered.connect(lambda: self._rename_item(file_path))
-        delete_action = menu.addAction("Delete")
-        delete_action.triggered.connect(lambda: self._delete_item(file_path))
-
-        # Disable actions that don't apply
-        if not index.isValid():
-            rename_action.setEnabled(False)
-            delete_action.setEnabled(False)
-
-        action = menu.exec(self.tree.viewport().mapToGlobal(position))
-
-    def _create_new_file(self, base_path):
-        """Handles the 'New File' action."""
-        dir_path = base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-        file_name, ok = QInputDialog.getText(self, "New File", "Enter file name:")
-        if ok and file_name:
-            try:
-                new_path = os.path.join(dir_path, file_name)
-                if not os.path.exists(new_path):
-                    with open(new_path, 'w') as f:
-                        pass  # Create an empty file
-                    self.statusBar().showMessage(f"File '{file_name}' created.", 4000)
-                else:
-                    QMessageBox.warning(self, "Error", "File already exists.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not create file: {e}")
-
-    def _create_new_folder(self, base_path):
-        """Handles the 'New Folder' action."""
-        dir_path = base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-        folder_name, ok = QInputDialog.getText(self, "New Folder", "Enter folder name:")
-        if ok and folder_name:
-            try:
-                new_path = os.path.join(dir_path, folder_name)
-                if not os.path.exists(new_path):
-                    os.makedirs(new_path)
-                    self.statusBar().showMessage(f"Folder '{folder_name}' created.", 4000)
-                else:
-                    QMessageBox.warning(self, "Error", "Folder already exists.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not create folder: {e}")
-
-    def _rename_item(self, path):
-        """Handles the 'Rename' action."""
-        old_name = os.path.basename(path)
-        new_name, ok = QInputDialog.getText(self, "Rename", "Enter new name:", text=old_name)
-        if ok and new_name and new_name != old_name:
-            try:
-                new_path = os.path.join(os.path.dirname(path), new_name)
-                os.rename(path, new_path)
-                self.statusBar().showMessage(f"Renamed to '{new_name}'.", 4000)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not rename item: {e}")
-
-    def _delete_item(self, path):
-        """Handles the 'Delete' action with confirmation."""
-        item_name = os.path.basename(path)
-        reply = QMessageBox.question(
-            self, "Confirm Delete",
-            f"Are you sure you want to permanently delete '{item_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                if os.path.isdir(path):
-                    shutil.rmtree(path)
-                else:
-                    os.remove(path)
-                self.statusBar().showMessage(f"Deleted '{item_name}'.", 4000)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not delete item: {e}")
-
-    def _on_file_navigator_double_clicked(self, index: QModelIndex):
-        """Handles double-click events in the file navigator to open files."""
-        file_path = self.tree.model().filePath(index)
-        if not os.path.isdir(file_path):
-            self.code_editor.open_file(file_path)
-
-    def _index_selected_file(self):
-        """Indexes the currently selected file in the tree view."""
-        indexes = self.tree.selectedIndexes()
-        if not indexes:
-            self.statusBar().showMessage("No file selected.", 4000)
-            return
-
-        # Get the file path from the model
-        file_path = self.tree.model().filePath(indexes[0])
-
-        if os.path.isdir(file_path):
-            self.statusBar().showMessage("Cannot index a directory.", 4000)
-            return
-
-        self.statusBar().showMessage(f"Indexing {os.path.basename(file_path)}...", 2000)
-        success = self.rag_system.index(file_path)
-
-        if success:
-            self.statusBar().showMessage(f"Successfully indexed {os.path.basename(file_path)}.", 5000)
-        else:
-            self.statusBar().showMessage(f"Failed to index {os.path.basename(file_path)}.", 5000)
-
-    def _execute_code_in_terminal(self, code: str):
-        """Receives code, saves it to a temp file, and executes it in the terminal."""
-        if not code:
-            return
-
-        try:
-            # Sanitize the code to handle multiple issues:
-            # 1. Replace non-standard line breaks
-            sanitized_code = code.replace('\u2029', '\n').strip()
-
-            # 2. Strip markdown code block fences
-            if sanitized_code.startswith('```python'):
-                sanitized_code = sanitized_code[9:] # len('```python')
-            if sanitized_code.startswith('```'):
-                sanitized_code = sanitized_code[3:]
-            if sanitized_code.endswith('```'):
-                sanitized_code = sanitized_code[:-3]
-
-            sanitized_code = sanitized_code.strip()
-
-            # Create a temporary file to hold the code
-            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.py', encoding='utf-8') as temp_file:
-                temp_file.write(sanitized_code)
-                temp_file_path = temp_file.name
-
-            # Get the path to the current python executable (to respect the venv)
-            python_executable = sys.executable
-
-            # Construct a robust command for PowerShell:
-            # 1. Execute the python script, redirecting stderr to stdout (2>&1)
-            # 2. Capture all output into the $output variable
-            # 3. Explicitly write the captured output to the pipeline
-            # 4. Remove the temporary file, ignoring errors if it's already gone
-            command = f"$output = & \"{python_executable}\" \"{temp_file_path}\" 2>&1; Write-Output $output; Remove-Item \"{temp_file_path}\" -ErrorAction SilentlyContinue"
-
-            self.bottom_right_tabs.setCurrentWidget(self.terminal_tabs)
-            self.terminal_tabs.currentWidget().execute_command(command)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Execution Error", f"Failed to execute code: {e}")
-
-    def _handle_ai_file_change(self, data: dict):
-        """Handles file creation/editing actions requested by the AI."""
-        logging.info(f"Attempting to handle AI file change action: {data}")
-
-        actions_to_process = []
-        if 'actions' in data and isinstance(data['actions'], list):
-            actions_to_process = data['actions']
-        else:
-            # Support single, non-list actions for backward compatibility or simpler cases
-            actions_to_process.append(data)
-
-        for action in actions_to_process:
-            try:
-                # Map AI-provided keys ('action', 'path') to internal keys ('type', 'file_path')
-                action_type = action.get("action", "").upper()
-                file_path = action.get("path")
-                content = action.get("content", "")
-
-                if not file_path:
-                    QMessageBox.warning(self, "Invalid Action", f"AI proposed an invalid file action: {action}")
-                    continue # Skip to the next action
-
-                # Ensure the file path is relative to the project root
-                # and prevent directory traversal attacks.
-                full_path = os.path.abspath(os.path.join(self.project_root, file_path))
-                if not full_path.startswith(os.path.abspath(self.project_root)):
-                    raise Exception(f"Attempted to access a file outside the project root: {file_path}")
-
-                logging.info(f"Resolved full path for file operation: {full_path}")
-
-                # Execute the action
-                if action_type == "CREATE_FILE":
-                    parent_dir = os.path.dirname(full_path)
-                    os.makedirs(parent_dir, exist_ok=True)
-                    if not os.path.exists(full_path):
-                        with open(full_path, 'w', encoding='utf-8') as f:
-                            f.write(content)
-                        self.statusBar().showMessage(f"File created: {file_path}", 5000)
-                        logging.info(f"Successfully created file: {full_path}")
-                        if os.path.basename(file_path) == 'plan.md':
-                            self.chat_widget.on_plan_created()
-                    else:
-                        logging.info(f"File already exists, skipping creation: {full_path}")
-                elif action_type == "EDIT_FILE":
-                    with open(full_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    self.statusBar().showMessage(f"File updated: {file_path}", 5000)
-                    logging.info(f"Successfully updated file: {full_path}")
-                elif action_type in ["CREATE_DIRECTORY", "CREATE_DIR"]:
-                    os.makedirs(full_path, exist_ok=True)
-                    self.statusBar().showMessage(f"Directory created: {file_path}", 5000)
-                    logging.info(f"Successfully created directory: {full_path}")
-                elif action_type == "DELETE_FILE":
-                    os.remove(full_path)
-                    self.statusBar().showMessage(f"File deleted: {file_path}", 5000)
-                    logging.info(f"Successfully deleted file: {full_path}")
-                else:
-                    logging.warning(f"Unknown action type '{action_type}' requested by AI.")
-
-            except Exception as e:
-                error_message = f"Failed to perform AI action. Action: {action}, Error: {e}"
-                logging.error(error_message, exc_info=True)
-                QMessageBox.critical(self, "Error", error_message)
-                # Decide if you want to stop on first error or continue
-                # For now, we continue to the next action
-
-    def _populate_models(self):
-        """Fetches available models from the LLM manager and populates the dropdown."""
-        if not self.llm_manager or not self.llm_manager.client:
-            self.statusBar().showMessage("Ollama service not available. Please start Ollama and restart.", 5000)
-            return
-
-        try:
-            models = self.llm_manager.discover_models()
-            self.model_selector.addItems(models)
-            if not models:
-                self.model_selector.addItem("No models found")
-                self.model_selector.setEnabled(False)
-                self.load_model_button.setEnabled(False)
-        except Exception as e:
-            self.statusBar().showMessage(f"Failed to populate models: {e}", 5000)
-
-    def _load_selected_model(self):
-        """Handles the model loading process."""
-        model_name = self.model_selector.currentText()
-        if model_name and "No models" not in model_name:
-            self.load_model_button.setEnabled(False)
-            self.load_model_button.setText("Loading...")
-            self.statusBar().showMessage(f"Loading model: {model_name}...")
-
-            # Run model loading in a separate thread to keep UI responsive
-            self.load_thread = LoadModelThread(self.llm_manager, model_name)
-            self.load_thread.finished.connect(self._on_model_loaded)
-            self.load_thread.start()
-
-    def _on_model_loaded(self, result):
-        """Callback for when model loading is complete."""
-        self.load_model_button.setEnabled(True)
-        self.load_model_button.setText("Load Model")
-        self.statusBar().showMessage(result["message"], 5000)
-        if result["status"] == "success":
-            self.chat_widget.set_llm_manager(self.llm_manager)
-
-    def open_new_terminal(self):
-        """Opens a new terminal tab."""
-        new_terminal = TerminalWidget(self.project_root)
-        tab_index = self.terminal_tabs.addTab(new_terminal, f"Terminal {self.terminal_tabs.count() + 1}")
-        self.terminal_tabs.setCurrentIndex(tab_index)
-        self.bottom_right_tabs.setCurrentWidget(self.terminal_tabs)
-
-    def close_terminal_tab(self, index):
-        """Closes a terminal tab."""
-        widget = self.terminal_tabs.widget(index)
-        if widget:
-            widget.deleteLater() # Ensure proper cleanup
-        self.terminal_tabs.removeTab(index)
-
-    def closeEvent(self, event):
-        """Saves chat history before closing."""
-        self.chat_widget.save_history()
-        super().closeEvent(event)
+        # LLM Select Menu
+        llm_menu = menu_bar.addMenu("&LLM Select")
+        select_model_action = QAction("Select LLM Model...", self)
+        select_model_action.triggered.connect(self.select_llm_model)
+        llm_menu.addAction(select_model_action)
 
     def _create_status_bar(self):
         """Creates and configures the status bar."""
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
+        status_bar = self.statusBar()
+        self.status_bar_message = QLabel("No project selected.")
+        status_bar.addPermanentWidget(self.status_bar_message)
 
-        # Add a permanent widget to show the project root
-        self.project_root_label = QLabel(f"Project: {QDir.currentPath()}")
-        self.status_bar.addPermanentWidget(self.project_root_label)
+    def _connect_signals(self):
+        """Connect all signals to their slots in one place."""
+        self.file_navigator.file_selected.connect(self.code_editor.open_file)
+        self.file_navigator.project_root_changed.connect(self.on_project_root_changed)
+        # The chat_widget's internal _handle_ai_file_change now manages this.
+        # No direct connection needed here if the widget handles its own button clicks.
 
-        self.model_selector = QComboBox()
-        self.model_selector.setToolTip("Select an available LLM")
-        self.status_bar.addPermanentWidget(self.model_selector)
+    def on_project_root_changed(self, new_root):
+        """Handles the project root change across the application."""
+        self.file_navigator.set_root_path(new_root)
+        self.project_service.set_project_root(new_root)
+        self.chat_widget.set_project_root(new_root)
+        self.terminal_widget.set_project_root(new_root)
+        self.status_bar_message.setText(f"Project: {new_root}")
+        logging.info(f"MainWindow: Project root changed to {new_root}")
 
-        self.load_model_button = QPushButton("Load Model")
-        self.load_model_button.setToolTip("Load the selected model")
-        self.load_model_button.clicked.connect(self._load_selected_model)
-        self.status_bar.addPermanentWidget(self.load_model_button)
+    def open_project_folder(self):
+        """Opens a dialog to select a project folder."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+        if directory:
+            self.on_project_root_changed(directory)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        self.progress_bar.setVisible(False)
-        self.status_bar.addPermanentWidget(self.progress_bar)
+    def select_llm_model(self):
+        """Opens a dialog to select and load an LLM model."""
+        available_models = self.llm_manager.list_models()
+        if not available_models:
+            QMessageBox.warning(
+                self,
+                "No Models Found",
+                (
+                    "Could not find any Ollama models. Please make sure Ollama is "
+                    "running and models are installed."
+                ),
+            )
+            return
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select LLM Model")
+        layout = QVBoxLayout(dialog)
+
+        list_widget = QListWidget()
+        list_widget.addItems(available_models)
+        if self.llm_manager.loaded_model in available_models:
+            try:
+                list_widget.setCurrentRow(
+                    available_models.index(self.llm_manager.loaded_model)
+                )
+            except ValueError:
+                pass  # loaded model not in list
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec():
+            selected_item = list_widget.currentItem()
+            if selected_item:
+                model_name = selected_item.text()
+                self.status_bar_message.setText(f"Loading model: {model_name}...")
+                QApplication.processEvents()
+                if self.llm_manager.load_model(model_name):
+                    self.status_bar_message.setText(f"Model loaded: {model_name}")
+                else:
+                    self.status_bar_message.setText("Failed to load model.")
+                    QMessageBox.critical(
+                        self, "Error", f"Failed to load model: {model_name}"
+                    )
+
+    def closeEvent(self, event):
+        """Handles window close events."""
+        # The chat widget now handles saving its own history.
+        super().closeEvent(event)
+
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+app = QApplication(sys.argv)
+window = MainWindow()
+window.show()
+sys.exit(app.exec())
