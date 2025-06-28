@@ -12,6 +12,17 @@ HomeLLMCoder is a local-first, AI-powered integrated development environment (ID
 - 📂 **Project Management** - Easily create new projects, manage files, and switch between different project contexts.
 - 🖥️ **Cross-Platform** - Built with PyQt6, aiming for compatibility with Windows, macOS, and Linux.
 
+## The Agentic Workflow
+
+HomeLLMCoder uses a team of specialized AI agents to handle your requests. This ensures that each step of the process is handled by an expert.
+
+- **Manager Agent:** The project architect. It takes your high-level goal and creates a `plan.md` file that outlines the project and assigns tasks.
+- **Planner Agent:** The detail-oriented planner. It takes the `plan.md` and breaks down the tasks into a detailed, step-by-step execution plan.
+- **Coder Agent:** The programmer. It writes the code based on the detailed plan.
+- **Refactor Agent:** The code quality expert. It improves existing code without changing its functionality.
+- **QA/Tester Agent:** The quality assurance specialist. It writes tests to ensure the code is bug-free.
+- **Docs Agent:** The technical writer. It generates documentation for the code.
+
 ## 🚀 Quick Start
 
 ### Prerequisites

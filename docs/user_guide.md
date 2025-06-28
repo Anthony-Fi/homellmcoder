@@ -1,15 +1,25 @@
 # HomeLLMCoder User Guide
 
-Welcome to the HomeLLMCoder User Guide. This document provides instructions on how to install, configure, and use the application.
+Welcome to HomeLLMCoder! This guide will help you get started with the application.
 
-## 1. Installation
+## Setting Up Your Project
 
-*(Instructions on how to run the application from source or using the distributable executable will be added here.)*
+1.  **Launch the application.**
+2.  Use the **File Navigator** on the left to browse to your project's folder.
+3.  **Right-click** on your project's root folder and select **"Set as Project Root"**. This tells HomeLLMCoder where your project is located.
 
-## 2. Features
+## Using the Agentic Workflow
 
-*(A detailed description of the application's features, such as the file navigator, code editor, and chat widget, will be added here.)*
+HomeLLMCoder uses a team of specialized AI agents to help you with your coding tasks. Here's how to use them:
 
-## 3. Usage
+1.  **Select the Manager Agent:** In the chat panel, use the dropdown menu to select the `Manager Agent`.
+2.  **Give the Manager a Goal:** In the chat input, describe the high-level goal for your project. For example: `Create a simple Python web server using Flask.`
+3.  **Review the Plan:** The Manager will create a `plan.md` file in your project's root directory. This file outlines the project and the tasks required to complete it. You can open this file in the editor to see the plan.
+4.  **Switch to the Planner Agent:** Once the plan is created, switch to the `Planner Agent`. The Planner will read the `plan.md` and provide a detailed, step-by-step guide to completing the tasks.
+5.  **Execute with Specialist Agents:** Use the other specialist agents, like the `Coder Agent` or `Docs Agent`, to execute the steps provided by the Planner.
 
-*(Step-by-step instructions on how to perform common tasks, like creating a new project or interacting with the AI, will be added here.)*
+## Chatting with the AI
+
+-   **Select a Model:** Use the dropdown menu at the top of the chat panel to select the LLM you want to use.
+-   **Enter Your Prompt:** Type your message in the input box at the bottom and press Enter.
+-   **View the Conversation:** The conversation is displayed in the main chat area, with your messages on the right and the AI's responses on the left.

@@ -7,8 +7,12 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QMessageBox,
+    QComboBox,
+    QLabel,
 )
 from PyQt6.QtGui import QFont
+import json
+import os
 
 from .components.chat_bubble import ChatBubble
 from .components.chat_worker import ChatWorker
@@ -16,6 +20,7 @@ from .components.chat_input_box import ChatInputBox
 from .components.ai_status_indicator import AIStatusIndicator
 from ..services.history_service import HistoryService
 from ..services.file_operation_service import FileOperationService
+from src.llm_service.agents import AGENTS
 
 
 class LLMChatWidget(QWidget):
@@ -37,6 +42,8 @@ class LLMChatWidget(QWidget):
         self.current_ai_response = ""
         self.status_indicator = AIStatusIndicator()
         self.conversation_history = []
+        self.agents = AGENTS
+        self.current_agent_key = "manager"  # Default to the manager
 
         # Service Dependencies
         self.history_service = history_service or HistoryService()
@@ -75,43 +82,61 @@ class LLMChatWidget(QWidget):
             "", is_user=False
         )  # Create empty bubble for AI
 
+        # Prepare messages for the worker, including the agent's system prompt
+        system_prompt = self.agents[self.current_agent_key]["system_prompt"]
+        messages_for_worker = [{"role": "system", "content": system_prompt}] + self.conversation_history
+
         # Setup and start the worker thread
         self.thread = QThread()
-        self.worker = ChatWorker(self.llm_manager, self.conversation_history)
+        self.worker = ChatWorker(self.llm_manager, messages_for_worker)
         self.worker.moveToThread(self.thread)
 
-        self.worker.response_updated.connect(self.on_new_chat_message)
-        self.worker.finished.connect(self.on_worker_finished)
+        self.worker.response_updated.connect(self._handle_response_chunk)
         self.worker.error_occurred.connect(self.on_worker_error)
+        self.worker.finished.connect(self._on_worker_finished)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    def on_new_chat_message(self, chunk):
+    def _handle_response_chunk(self, chunk):
         """Appends a chunk of the AI's response to the chat view."""
         self.current_ai_response += chunk
         if self.ai_bubble:
             self.ai_bubble.set_text(self.current_ai_response + " █")
 
-    def on_worker_finished(self):
-        """Handles the completion of the AI's response stream."""
-        self.set_status_indicator(False)  # Idle
-        if self.current_ai_response:
-            if self.ai_bubble:
-                self.ai_bubble.set_text(self.current_ai_response, is_final=True)
-            self.conversation_history.append(
-                {"role": "assistant", "content": self.current_ai_response}
-            )
-            if self.project_root:
-                self.history_service.save_history(
-                    self.project_root, self.conversation_history
-                )
+    def _on_worker_finished(self):
+        """Handles cleanup and delegation after the worker thread is done."""
+        self.thread.quit()
+        self.worker.deleteLater()
+        self.thread.deleteLater()
+        self.set_status_indicator(False)
+        self.save_chat_history()
 
-        if self.thread is not None:
-            self.thread.quit()
-            self.thread.wait()
-            self.thread = None
-        self.worker = None
+        # If the manager was the active agent, create the plan.md file
+        if self.current_agent_key == "manager":
+            plan_content = self.current_ai_response
+            if self.project_root:
+                try:
+                    actions = [
+                        {
+                            "action": "create_file",
+                            "path": "plan.md",
+                            "content": plan_content,
+                        }
+                    ]
+                    self.file_operation_service.execute_actions(self.project_root, actions)
+                    plan_path = os.path.join(self.project_root, "plan.md")
+                    self._add_message(
+                        "system", f"Master plan created at {plan_path}. You can now switch to the Planner agent to detail the steps."
+                    )
+
+                except Exception as e:
+                    logging.error(f"Error creating plan.md: {e}")
+                    self._add_message("system", f"Error creating plan.md: {e}")
+            else:
+                self._add_message("system", "Error: No project root is set. Cannot create plan.md.")
+
+        self.current_ai_response = ""
 
     def on_worker_error(self, error_message):
         """Displays an error message from the worker thread."""
@@ -192,6 +217,19 @@ class LLMChatWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
 
+        # Agent Selection Dropdown
+        agent_selection_layout = QHBoxLayout()
+        agent_label = QLabel("Agent:")
+        self.agent_combo_box = QComboBox()
+        for key, agent_data in self.agents.items():
+            self.agent_combo_box.addItem(agent_data["name"], userData=key)
+        self.agent_combo_box.setCurrentIndex(list(self.agents.keys()).index(self.current_agent_key))
+        self.agent_combo_box.currentIndexChanged.connect(self._on_agent_changed)
+
+        agent_selection_layout.addWidget(agent_label)
+        agent_selection_layout.addWidget(self.agent_combo_box)
+        layout.addLayout(agent_selection_layout)
+
         self.conversation_view = QScrollArea()
         self.conversation_view.setWidgetResizable(True)
         self.conversation_view_widget = QWidget()
@@ -215,7 +253,21 @@ class LLMChatWidget(QWidget):
         layout.addWidget(self.conversation_view)
         layout.addLayout(input_layout)
 
+    def _on_agent_changed(self, index):
+        self.current_agent_key = self.agent_combo_box.itemData(index)
+        logging.info(f"Switched to {self.agents[self.current_agent_key]['name']}")
+
     def _scroll_to_bottom(self):
         """Scrolls the conversation view to the bottom."""
         scroll_bar = self.conversation_view.verticalScrollBar()
         QTimer.singleShot(100, lambda: scroll_bar.setValue(scroll_bar.maximum()))
+
+    def save_chat_history(self):
+        if self.project_root:
+            self.history_service.save_history(
+                self.project_root, self.conversation_history
+            )
+
+    def _add_message(self, role, content):
+        self.conversation_history.append({"role": role, "content": content})
+        self.add_message_to_view(content, role == "assistant")

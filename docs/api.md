@@ -65,6 +65,50 @@ Handles the loading and saving of chat history for a project.
 
 Executes file system operations, such as creating or modifying files.
 
+### `execute_actions(self, project_root: str, actions: list)`
+- **Description:** Executes a list of file operations in a transactional manner.
+- **Parameters:**
+  - `project_root` (str): The absolute path to the project's root directory.
+  - `actions` (list): A list of action dictionaries.
+
+#### Action Format
+
+Each action is a dictionary that specifies the operation to perform.
+
+**`create_file`**
+
+Creates a new file with the specified content.
+
+```json
+{
+    "action": "create_file",
+    "path": "path/to/your/file.txt",
+    "content": "Your file content here."
+}
+```
+
+**`delete_file`**
+
+Deletes a file.
+
+```json
+{
+    "action": "delete_file",
+    "path": "path/to/your/file.txt"
+}
+```
+
+**`create_directory`**
+
+Creates a new directory.
+
+```json
+{
+    "action": "create_directory",
+    "path": "path/to/your/new_directory"
+}
+```
+
 ### `create_file(self, file_path: str, content: str)`
 - **Description:** Creates a new file with the specified content. It also creates any necessary parent directories.
 - **Parameters:**
