@@ -1,6 +1,7 @@
 import os
+import logging
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
-from PyQt6.QtCore import QProcess, Qt, QDir
+from PyQt6.QtCore import QProcess, Qt, QDir, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QColor, QTextCursor, QKeyEvent
 
 
@@ -108,6 +109,32 @@ class TerminalWidget(QWidget):
             self.input_start_position = self.terminal.textCursor().position()
         else:
             QTextEdit.keyPressEvent(self.terminal, event)
+
+    def append_output(self, text):
+        """Appends standard output text to the terminal."""
+        logging.debug(f"TerminalWidget: Appending output: {text.strip()}")
+        self.terminal.moveCursor(QTextCursor.MoveOperation.End)
+        self.terminal.insertPlainText(text)
+        self.terminal.moveCursor(QTextCursor.MoveOperation.End)
+        self.input_start_position = self.terminal.textCursor().position()
+
+    def append_error(self, text):
+        """Appends error output text to the terminal, in red."""
+        logging.debug(f"TerminalWidget: Appending error: {text.strip()}")
+        self.terminal.moveCursor(QTextCursor.MoveOperation.End)
+        self.terminal.setTextColor(QColor("red"))
+        self.terminal.insertPlainText(text)
+        self.terminal.setTextColor(QColor("white"))  # Reset color
+        self.terminal.moveCursor(QTextCursor.MoveOperation.End)
+        self.input_start_position = self.terminal.textCursor().position()
+
+    def command_finished(self, exit_code):
+        """Logs the completion of an externally run command."""
+        self.terminal.append(f"\n[External command finished with exit code: {exit_code}]")
+        self.input_start_position = self.terminal.textCursor().position() # Update position after external command
+        self.terminal.moveCursor(QTextCursor.MoveOperation.End) # Ensure cursor is at the end
+        # Re-display the prompt if necessary, or ensure the shell is ready for input
+        self.process.write(b"\n") # Send a newline to ensure the shell prompt reappears
 
     def execute_command(self, command: str):
         """Writes a command to the terminal process to be executed."""

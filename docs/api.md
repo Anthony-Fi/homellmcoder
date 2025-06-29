@@ -123,7 +123,7 @@ Creates a new directory.
 
 **`run_command`**
 
-Executes a shell command.
+Executes a shell command. The output of this command is streamed live to the integrated terminal.
 
 ```json
 {

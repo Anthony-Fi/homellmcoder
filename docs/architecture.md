@@ -26,7 +26,9 @@ graph TD
 
 1.  **Manager Agent:** Acts as the project architect. It receives the user's goal and creates a `plan.md` file, which outlines the high-level project and assigns tasks to other agents. The Manager agent's output is strictly enforced to only allow the creation of `plan.md`.
 2.  **Planner Agent:** Reads the `plan.md` file and refines it into a detailed, step-by-step execution plan. The Planner's output is strictly an updated `project_plan.md`. The Planner agent's output is strictly enforced to only allow modifications to `project_plan.md`.
-3.  **Specialist Agents (Coder, Refactor, QA/Tester, Docs):** Execute the detailed steps provided by the Planner. The `Coder Agent` can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and create/edit code files directly from the plan. The Coder agent's output is strictly enforced to prevent any modifications to `plan.md` or `project_plan.md`. Each agent focuses on its specific area of expertise, ensuring high-quality output.
+3.  **Specialist Agents (Coder, Refactor, QA/Tester, Docs):** Execute the detailed steps provided by the Planner. The `Coder Agent` can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and create/edit code files directly from the plan. The output of these `run_command` actions is streamed live to the `TerminalWidget`. The Coder agent's output is strictly enforced to prevent any modifications to `plan.md` or `project_plan.md`. Each agent focuses on its specific area of expertise, ensuring high-quality output.
+
+All specialist agents share a common chat history, allowing for seamless context transfer and collaboration throughout the workflow.
 
 ## Main Components
 

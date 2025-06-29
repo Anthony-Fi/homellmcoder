@@ -19,6 +19,9 @@ HomeLLMCoder uses a team of specialized AI agents to help you with your coding t
 5.  **Review the Detailed Project Plan (`project_plan.md`):** The Planner will propose a detailed `project_plan.md`. Review the proposed `project_plan.md` in the chat window. If satisfied, click the **"Apply Changes"** button to update the file. (Note: The Planner agent is strictly enforced to only modify `project_plan.md`.)
 6.  **Execute with Specialist Agents:** Use the other specialist agents, like the `Coder Agent` or `Docs Agent`, to execute the steps provided in the `project_plan.md`. The `Coder Agent` is now capable of executing terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), creating directories, and creating/editing code files directly from the plan. (Note: The Coder agent is strictly enforced to *not* modify `plan.md` or `project_plan.md`.) Each agent's proposed actions will be presented for your review with an "Apply Changes" button.
 
+### Live Terminal Output
+When the AI executes `run_command` actions, the output is streamed live to the integrated terminal, allowing you to see the progress in real-time. Please note that some commands, like `python -m venv venv`, may not produce visible output during execution if successful, as they are often designed to be silent unless an error occurs.
+
 ## Chatting with the AI
 
 -   **Select a Model:** Use the dropdown menu at the top of the chat panel to select the LLM you want to use.

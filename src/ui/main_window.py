@@ -26,7 +26,7 @@ from src.ui.plan_widget import PlanWidget  # Import PlanWidget
 from src.llm_service.manager import LocalLLMManager
 from src.services.project_service import ProjectService
 from src.services.history_service import HistoryService
-from src.services.file_operation_service import FileOperationService
+from src.services.file_operation_service import FileOperationService, CommandOutputEmitter
 
 
 class MainWindow(QMainWindow):
@@ -38,7 +38,8 @@ class MainWindow(QMainWindow):
         # Initialize services
         self.project_service = ProjectService()
         self.history_service = HistoryService()
-        self.file_operation_service = FileOperationService()
+        self.command_output_emitter = CommandOutputEmitter()
+        self.file_operation_service = FileOperationService(self.command_output_emitter)
         self.llm_manager = LocalLLMManager()
 
         self.setWindowTitle("HomeLLMCoder")
@@ -115,6 +116,11 @@ class MainWindow(QMainWindow):
         self.file_navigator.project_root_changed.connect(self.on_project_root_changed)
         self.chat_widget.plan_updated.connect(self.plan_widget.set_plan_content)
         self.plan_widget.run_coder_requested.connect(self._on_run_coder_requested)
+
+        # Connect command output signals to terminal widget
+        self.command_output_emitter.output_received.connect(self.terminal_widget.append_output)
+        self.command_output_emitter.error_received.connect(self.terminal_widget.append_error)
+        self.command_output_emitter.command_finished.connect(self.terminal_widget.command_finished)
 
     def _on_run_coder_requested(self):
         """Triggers the Coder agent with the current context."""
@@ -219,6 +225,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handles window close events."""
+        # Ensure the chat worker thread is gracefully shut down
+        if self.chat_widget:
+            self.chat_widget.shutdown()
         # The chat widget now handles saving its own history.
         super().closeEvent(event)
 

@@ -1,9 +1,22 @@
 import os
 import logging
 import subprocess
+import threading
+import queue
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+class CommandOutputEmitter(QObject):
+    output_received = pyqtSignal(str)
+    error_received = pyqtSignal(str)
+    command_finished = pyqtSignal(int)
+
 
 
 class FileOperationService:
+    def __init__(self, output_emitter: CommandOutputEmitter = None):
+        self.output_emitter = output_emitter
+
     def execute_actions(self, project_root, actions):
         """Executes a list of file operations."""
         if not project_root or not os.path.isdir(project_root):
@@ -14,25 +27,64 @@ class FileOperationService:
             try:
                 action_type = action_data.get("action")
 
-                # Handle run_command separately as it doesn't require a path
+                # Handle run_command separately
                 if action_type == "run_command":
                     command_line = action_data.get("command_line")
                     if not command_line:
                         raise ValueError("'command_line' is a required field for run_command.")
                     logging.info(f"Executing command: {command_line}")
-                    try:
-                        # Use subprocess.run to execute the command
-                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, check=True)
+                    command_cwd = action_data.get("cwd", project_root)
+                    if not os.path.isabs(command_cwd):
+                        command_cwd = os.path.join(project_root, command_cwd)
+                    logging.info(f"Executing command in CWD: {command_cwd}")
+
+                    if self.output_emitter:
+                        # Use Popen for streaming output
+                        process = subprocess.Popen(
+                            command_line,
+                            shell=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            cwd=command_cwd
+                        )
+
+                        # Start threads to read stdout and stderr
+                        def read_stdout(p, emitter):
+                            for line in p.stdout:
+                                logging.debug(f"Emitting stdout: {line.strip()}")
+                                emitter.output_received.emit(line)
+                            p.stdout.close()
+
+                        def read_stderr(p, emitter):
+                            for line in p.stderr:
+                                logging.debug(f"Emitting stderr: {line.strip()}")
+                                emitter.error_received.emit(line)
+                            p.stderr.close()
+
+                        stdout_thread = threading.Thread(target=read_stdout, args=(process, self.output_emitter))
+                        stderr_thread = threading.Thread(target=read_stderr, args=(process, self.output_emitter))
+
+                        stdout_thread.start()
+                        stderr_thread.start()
+
+                        # Wait for threads to finish, then for the process to finish
+                        stdout_thread.join()
+                        stderr_thread.join()
+                        exit_code = process.wait()
+                        self.output_emitter.command_finished.emit(exit_code)
+
+                        if exit_code != 0:
+                            logging.error(f"Command exited with code {exit_code}: {command_line}")
+                            raise subprocess.CalledProcessError(exit_code, command_line)
+                    else:
+                        # Fallback to subprocess.run if no emitter is provided (e.g., for tests)
+                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, check=True, cwd=command_cwd)
                         logging.info(f"Command stdout:\n{result.stdout}")
                         if result.stderr:
                             logging.warning(f"Command stderr:\n{result.stderr}")
-                    except subprocess.CalledProcessError as e:
-                        logging.error(f"Command failed with error: {e}\nStdout: {e.stdout}\nStderr: {e.stderr}")
-                        raise e
-                    except FileNotFoundError:
-                        logging.error(f"Command not found: {command_line.split()[0]}")
-                        raise
-                    continue # Move to the next action
+
+                    continue
 
                 # For all other actions, 'path' is required
                 path = action_data.get("path")

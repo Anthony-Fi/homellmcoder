@@ -6,7 +6,9 @@ HomeLLMCoder is a local-first, AI-powered integrated development environment (ID
 
 - 🤖 **Agentic AI Workflow** - Leverage a local LLM to generate, execute, and refine development plans.
 - 💡 **Plan-Driven Development** - The AI creates a `plan.md` (high-level) and `project_plan.md` (detailed) for each project, which it follows step-by-step.
-- 🚀 **Automated Environment Setup & Command Execution** - Agents can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and manage files for environment setup, dependency installation, and project scaffolding.
+- 🚀 **Automated Environment Setup & Command Execution** - Agents can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and manage files for environment setup, dependency installation, and project scaffolding. (Note: Some commands, like `python -m venv venv`, may not produce visible output during execution if successful, as they are often designed to be silent unless an error occurs.)
+- ⚡ **Live Streaming Terminal Output** - See the real-time output of AI-executed terminal commands directly in the integrated terminal.
+- 🔄 **Shared Agent Context** - All specialist agents share a common chat history, allowing for seamless context transfer and collaborative problem-solving.
 - 🔒 **Strict Agent Role Enforcement** - Each agent's output is strictly filtered and enforced by the UI to ensure they adhere to their specific roles and prevent unintended actions or file modifications.
 - 💻 **Integrated Development Environment** - A seamless interface with a file navigator, tabbed code editor, and integrated terminal.
 - 💬 **Interactive LLM Chat** - Communicate with the AI to create plans, generate code, and manage your project.

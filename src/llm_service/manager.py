@@ -71,7 +71,7 @@ class LocalLLMManager:
             self.loaded_model = None
             return False
 
-    def get_response(self, conversation_history: list):
+    def stream_chat(self, conversation_history: list):
         """Gets a streaming response from the LLM based on the conversation history."""
         if not self.client or not self.loaded_model:
             logging.error("LLM not loaded or connected.")
