@@ -161,7 +161,7 @@ class LLMChatWidget(QWidget):
             self.ai_bubble.set_text(self.current_ai_response + " █")
 
         # Log the raw LLM response for debugging purposes
-        logging.debug(f"Raw LLM Response: {self.current_ai_response}")
+
 
     def _on_worker_finished(self):
         """Handles cleanup and delegation after the worker thread is done."""
@@ -186,7 +186,73 @@ class LLMChatWidget(QWidget):
         # Check for any agent response containing file actions
         actions_data = None
         if self.current_agent_key == "planner":
-            actions_data = self._extract_planner_actions_strictly(response_text)
+            # Inlined _extract_planner_actions_strictly logic
+            match = re.search(r"```json\s*({.*})\s*```", response_text, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+            else:
+                json_str = response_text.strip()
+                start_idx = json_str.find('{')
+                end_idx = json_str.rfind('}')
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_str = json_str[start_idx : end_idx + 1]
+                else:
+                    logging.warning("Could not find a valid JSON object in the response for Planner agent.")
+                    actions_data = None
+
+            if json_str:
+                try:
+                    data = json.loads(json_str)
+                    if isinstance(data, dict) and "actions" in data:
+                        planner_approved_actions = []
+                        for action in data.get("actions", []):
+                            if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
+                                planner_approved_actions.append(action)
+                            else:
+                                logging.warning(f"Planner agent attempted to generate disallowed action: {action}")
+                        data["actions"] = planner_approved_actions
+                        if not planner_approved_actions:
+                            self.display_agent_message("The Planner agent's output was rejected. It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
+                        actions_data = data
+                except json.JSONDecodeError:
+                    logging.info("Initial JSON parse failed for Planner agent, attempting robust action extraction.")
+                    action_pattern = re.compile(r'{\s*"action"\s*:\s*"(?P<action>[^"]*)",\s*"path"\s*:\s*"(?P<path>[^"]*)"(?:,\s*"content"\s*:\s*(?P<content_val>.*?))?}', re.DOTALL)
+
+                    extracted_actions = []
+                    for m in action_pattern.finditer(json_str):
+                        action_dict = {
+                            "action": m.group("action"),
+                            "path": m.group("path")
+                        }
+                        content_val = m.group("content_val")
+                        if content_val:
+                            content_val = content_val.strip()
+                            if content_val.startswith('"""') and content_val.endswith('"""'):
+                                content_val = content_val.strip('"""')
+                            elif content_val.startswith('"') and content_val.endswith('"'):
+                                content_val = content_val.strip('"')
+
+                            content_val = content_val.replace('\\n', '\n').replace('\\"', '"')
+                            action_dict["content"] = content_val
+
+                        extracted_actions.append(action_dict)
+
+                    if extracted_actions:
+                        logging.info(f"Successfully extracted actions for Planner agent using robust parsing: {extracted_actions}")
+                        planner_approved_actions = []
+                        for action in extracted_actions:
+                            if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
+                                planner_approved_actions.append(action)
+                            else:
+                                logging.warning(f"Planner agent attempted to generate disallowed action (robust extract): {action}")
+                        if not planner_approved_actions:
+                            self.display_agent_message("The Planner agent's output was rejected (robust extract). It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
+                        actions_data = {"actions": planner_approved_actions}
+                    else:
+                        logging.warning("Robust action extraction failed to find any actions for Planner agent.")
+                        actions_data = None
+            else:
+                actions_data = None
         elif self.current_agent_key == "manager":
             actions_data = self._extract_manager_actions_strictly(response_text)
         else:
@@ -552,11 +618,9 @@ class LLMChatWidget(QWidget):
         except json.JSONDecodeError as e:
             logging.error(f"JSON decoding failed: {e}\nAttempted to decode: {processed_json_str}")
             return None
-        return None
 
     def _extract_planner_actions_strictly(self, text: str) -> dict | None:
         """Extracts a JSON object containing file actions from the Planner agent's response."""
-        match = re.search(r"```json\s*({.*})\s*```", text, re.DOTALL)
         # Attempt to find the JSON block, with or without ```json ``` wrapper
         match = re.search(r"```json\s*({.*})\s*```", text, re.DOTALL)
         if match:
@@ -592,8 +656,8 @@ class LLMChatWidget(QWidget):
         except json.JSONDecodeError:
             logging.info("Initial JSON parse failed for Planner agent, attempting robust action extraction.")
             # Regex to find individual action blocks, assuming they start with { and contain "action" and "path"
-            action_pattern = re.compile(r'\{\s*"action"\s*:\s*"(?P<action>[^"]*)",\s*"path"\s*:\s*"(?P<path>[^"]*)"(?:,\s*"content"\s*:\s*(?P<content_val>.*?))?\}', re.DOTALL)
-            
+            action_pattern = re.compile(r'{\s*"action"\s*:\s*"(?P<action>[^"]*)",\s*"path"\s*:\s*"(?P<path>[^"]*)"(?:,\s*"content"\s*:\s*(?P<content_val>.*?))?}', re.DOTALL)
+
             extracted_actions = []
             for m in action_pattern.finditer(json_str):
                 action_dict = {
@@ -607,12 +671,12 @@ class LLMChatWidget(QWidget):
                         content_val = content_val.strip('"""')
                     elif content_val.startswith('"') and content_val.endswith('"'):
                         content_val = content_val.strip('"')
-                    
+
                     content_val = content_val.replace('\\n', '\n').replace('\\"', '"')
                     action_dict["content"] = content_val
-                
+
                 extracted_actions.append(action_dict)
-            
+
             if extracted_actions:
                 logging.info(f"Successfully extracted actions for Planner agent using robust parsing: {extracted_actions}")
                 # Apply strict filtering after robust extraction
@@ -629,12 +693,30 @@ class LLMChatWidget(QWidget):
                 logging.warning("Robust action extraction failed to find any actions for Planner agent.")
                 return None
 
-        return None
+    def _extract_planner_actions_strictly(self, text: str) -> dict | None:
+        """Extracts a JSON object containing file actions from the Planner agent's response."""
+        # Attempt to find the JSON block, with or without ```json ``` wrapper
+        match = re.search(r"```json\s*({.*})\s*```", text, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+        else:
+            # Fallback for raw JSON, stripping whitespace and non-printable characters
+            json_str = text.strip()
+            # Attempt to find the first '{' and last '}' to isolate the JSON object
+            start_idx = json_str.find('{')
+            end_idx = json_str.rfind('}')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = json_str[start_idx : end_idx + 1]
+            else:
+                logging.warning("Could not find a valid JSON object in the response for Planner agent.")
+                return None
 
+        # If initial parsing fails, try to manually parse action blocks
         try:
+            # First, try parsing the cleaned json_str directly
             data = json.loads(json_str)
             if isinstance(data, dict) and "actions" in data:
-                # Strict filtering for Planner agent
+                # This is the strict filtering for Planner agent, applied after successful JSON parse
                 planner_approved_actions = []
                 for action in data.get("actions", []):
                     if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
@@ -645,10 +727,119 @@ class LLMChatWidget(QWidget):
                 if not planner_approved_actions:
                     self.display_agent_message("The Planner agent's output was rejected. It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
                 return data
-        except json.JSONDecodeError as e:
-            logging.error(f"JSON decoding failed: {e}\nAttempted to decode: {json_str}")
-            return None
-        return None
+        except json.JSONDecodeError:
+            logging.info("Initial JSON parse failed for Planner agent, attempting robust action extraction.")
+            # Regex to find individual action blocks, assuming they start with { and contain "action" and "path"
+            action_pattern = re.compile(r'{\s*"action"\s*:\s*"(?P<action>[^"]*)",\s*"path"\s*:\s*"(?P<path>[^"]*)"(?:,\s*"content"\s*:\s*(?P<content_val>.*?))?}', re.DOTALL)
+
+            extracted_actions = []
+            for m in action_pattern.finditer(json_str):
+                action_dict = {
+                    "action": m.group("action"),
+                    "path": m.group("path")
+                }
+                content_val = m.group("content_val")
+                if content_val:
+                    content_val = content_val.strip()
+                    if content_val.startswith('"""') and content_val.endswith('"""'):
+                        content_val = content_val.strip('"""')
+                    elif content_val.startswith('"') and content_val.endswith('"'):
+                        content_val = content_val.strip('"')
+
+                    content_val = content_val.replace('\\n', '\n').replace('\\"', '"')
+                    action_dict["content"] = content_val
+
+                extracted_actions.append(action_dict)
+
+            if extracted_actions:
+                logging.info(f"Successfully extracted actions for Planner agent using robust parsing: {extracted_actions}")
+                # Apply strict filtering after robust extraction
+                planner_approved_actions = []
+                for action in extracted_actions:
+                    if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
+                        planner_approved_actions.append(action)
+                    else:
+                        logging.warning(f"Planner agent attempted to generate disallowed action (robust extract): {action}")
+                if not planner_approved_actions:
+                    self.display_agent_message("The Planner agent's output was rejected (robust extract). It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
+                return {"actions": planner_approved_actions}
+            else:
+                logging.warning("Robust action extraction failed to find any actions for Planner agent.")
+                return None
+
+    def _extract_planner_actions_strictly(self, text: str) -> dict | None:
+        """Extracts a JSON object containing file actions from the Planner agent's response."""
+        # Attempt to find the JSON block, with or without ```json ``` wrapper
+        match = re.search(r"```json\s*({.*})\s*```", text, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+        else:
+            # Fallback for raw JSON, stripping whitespace and non-printable characters
+            json_str = text.strip()
+            # Attempt to find the first '{' and last '}' to isolate the JSON object
+            start_idx = json_str.find('{')
+            end_idx = json_str.rfind('}')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = json_str[start_idx : end_idx + 1]
+            else:
+                logging.warning("Could not find a valid JSON object in the response for Planner agent.")
+                return None
+
+        # If initial parsing fails, try to manually parse action blocks
+        try:
+            # First, try parsing the cleaned json_str directly
+            data = json.loads(json_str)
+            if isinstance(data, dict) and "actions" in data:
+                # This is the strict filtering for Planner agent, applied after successful JSON parse
+                planner_approved_actions = []
+                for action in data.get("actions", []):
+                    if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
+                        planner_approved_actions.append(action)
+                    else:
+                        logging.warning(f"Planner agent attempted to generate disallowed action: {action}")
+                data["actions"] = planner_approved_actions
+                if not planner_approved_actions:
+                    self.display_agent_message("The Planner agent's output was rejected. It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
+                return data
+        except json.JSONDecodeError:
+            logging.info("Initial JSON parse failed for Planner agent, attempting robust action extraction.")
+            # Regex to find individual action blocks, assuming they start with { and contain "action" and "path"
+            action_pattern = re.compile(r'{\s*"action"\s*:\s*"(?P<action>[^"]*)",\s*"path"\s*:\s*"(?P<path>[^"]*)"(?:,\s*"content"\s*:\s*(?P<content_val>.*?))?}', re.DOTALL)
+
+            extracted_actions = []
+            for m in action_pattern.finditer(json_str):
+                action_dict = {
+                    "action": m.group("action"),
+                    "path": m.group("path")
+                }
+                content_val = m.group("content_val")
+                if content_val:
+                    content_val = content_val.strip()
+                    if content_val.startswith('"""') and content_val.endswith('"""'):
+                        content_val = content_val.strip('"""')
+                    elif content_val.startswith('"') and content_val.endswith('"'):
+                        content_val = content_val.strip('"')
+
+                    content_val = content_val.replace('\\n', '\n').replace('\\"', '"')
+                    action_dict["content"] = content_val
+
+                extracted_actions.append(action_dict)
+
+            if extracted_actions:
+                logging.info(f"Successfully extracted actions for Planner agent using robust parsing: {extracted_actions}")
+                # Apply strict filtering after robust extraction
+                planner_approved_actions = []
+                for action in extracted_actions:
+                    if action.get("action") in ["create_file", "edit_file"] and action.get("path") == "project_plan.md":
+                        planner_approved_actions.append(action)
+                    else:
+                        logging.warning(f"Planner agent attempted to generate disallowed action (robust extract): {action}")
+                if not planner_approved_actions:
+                    self.display_agent_message("The Planner agent's output was rejected (robust extract). It must ONLY generate actions for 'project_plan.md'. Please try again or refine the goal.", is_user=False, agent_name="Planner")
+                return {"actions": planner_approved_actions}
+            else:
+                logging.warning("Robust action extraction failed to find any actions for Planner agent.")
+                return None
 
     def _extract_manager_actions_strictly(self, text: str) -> dict | None:
         """Extracts a JSON object containing file actions from the Manager agent's response, strictly enforcing 'create_file' for 'plan.md'."""

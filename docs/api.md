@@ -123,7 +123,7 @@ Creates a new directory.
 
 **`run_command`**
 
-Executes a shell command. The output of this command is streamed live to the integrated terminal.
+Executes a shell command. The output of this command is streamed live to the integrated terminal. The system automatically detects the user's shell environment (e.g., PowerShell, CMD, Bash) and adapts commands, particularly virtual environment activation scripts, for compatibility.
 
 ```json
 {

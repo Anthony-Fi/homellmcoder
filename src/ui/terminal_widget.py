@@ -52,8 +52,21 @@ class TerminalWidget(QWidget):
         )
         self.process.setWorkingDirectory(working_directory)
 
-        shell = "powershell.exe" if os.name == "nt" else "/bin/bash"
-        self.process.start(shell)
+        if os.name == "nt":
+            # Try PowerShell first, then CMD
+            try:
+                import subprocess
+                subprocess.run(["powershell.exe", "-Command", "exit"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                self.current_shell = "powershell"
+                shell_command = "powershell.exe"
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                self.current_shell = "cmd"
+                shell_command = "cmd.exe"
+        else:
+            self.current_shell = "bash"
+            shell_command = "/bin/bash"
+
+        self.process.start(shell_command)
 
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
@@ -139,6 +152,18 @@ class TerminalWidget(QWidget):
     def execute_command(self, command: str):
         """Writes a command to the terminal process to be executed."""
         if self.process.state() == QProcess.ProcessState.Running:
+            # Adapt virtual environment activation commands based on the shell
+            if "activate" in command and "venv" in command:
+                if self.current_shell == "powershell":
+                    # For PowerShell, use the .ps1 script
+                    command = command.replace("venv\\Scripts\\activate", "venv\\Scripts\\Activate.ps1")
+                elif self.current_shell == "cmd":
+                    # For CMD, use the .bat script
+                    command = command.replace("venv\\Scripts\\activate", "venv\\Scripts\\activate.bat")
+                elif self.current_shell == "bash":
+                    # For Bash/Zsh, use the standard activate script
+                    command = command.replace("venv/bin/activate", "venv/bin/activate")
+
             # Ensure the command ends with a newline to be executed
             if not command.endswith("\n"):
                 command += "\n"

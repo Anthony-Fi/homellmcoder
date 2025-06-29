@@ -11,10 +11,15 @@ def setup_logging():
 
     # Configure logging to write to a file and the console
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.WARNING,
+        force=True, # Ensure basicConfig reconfigures if called again
+
         format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
         handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)],
     )
+
+    # Suppress httpcore debug logs
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     logging.info("--- Application Log Started ---")
 

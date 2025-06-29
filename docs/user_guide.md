@@ -22,6 +22,12 @@ HomeLLMCoder uses a team of specialized AI agents to help you with your coding t
 ### Live Terminal Output
 When the AI executes `run_command` actions, the output is streamed live to the integrated terminal, allowing you to see the progress in real-time. Please note that some commands, like `python -m venv venv`, may not produce visible output during execution if successful, as they are often designed to be silent unless an error occurs.
 
+### Improved Logging
+Excessive debug logging has been reduced to improve terminal clarity and performance. Logs from internal components like `httpcore` and raw LLM responses are now suppressed, focusing on more relevant information.
+
+### Adaptive Terminal Commands
+The integrated terminal now intelligently detects your shell environment (e.g., PowerShell, CMD, Bash) and adapts virtual environment activation commands accordingly. This ensures commands like `venv\Scripts\activate` work correctly across different environments without manual intervention.
+
 ## Chatting with the AI
 
 -   **Select a Model:** Use the dropdown menu at the top of the chat panel to select the LLM you want to use.
