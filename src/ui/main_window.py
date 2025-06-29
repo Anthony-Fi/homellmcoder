@@ -71,13 +71,13 @@ class MainWindow(QMainWindow):
         self.terminal_widget = TerminalWidget(self)
         main_vertical_splitter.addWidget(self.terminal_widget)
 
-        self.chat_widget = LLMChatWidget(
-            self.llm_manager, self.history_service, self.file_operation_service, self, self.terminal_widget
-        )
-        top_horizontal_splitter.addWidget(self.chat_widget)
-
         self.plan_widget = PlanWidget(self)  # Initialize PlanWidget
         top_horizontal_splitter.addWidget(self.plan_widget)
+
+        self.chat_widget = LLMChatWidget(
+            self.llm_manager, self.history_service, self.file_operation_service, self.terminal_widget, self.plan_widget
+        )
+        top_horizontal_splitter.addWidget(self.chat_widget)
 
         # Set initial sizes for the splitters
         top_horizontal_splitter.setSizes([250, 650, 300, 300])  # Adjust size for plan widget
@@ -114,7 +114,6 @@ class MainWindow(QMainWindow):
         self.file_navigator.file_selected.connect(self.code_editor.open_file)
         self.file_navigator.project_root_changed.connect(self.on_project_root_changed)
         self.chat_widget.plan_updated.connect(self.plan_widget.set_plan_content)
-        self.plan_widget.run_planner_requested.connect(self._on_run_planner_requested)
         self.plan_widget.run_coder_requested.connect(self._on_run_coder_requested)
 
     def _on_run_coder_requested(self):
@@ -135,10 +134,6 @@ class MainWindow(QMainWindow):
         # 3. Run the coder
         self.chat_widget.run_coder_with_context(file_content, instructions)
 
-    def _on_run_planner_requested(self):
-        """Triggers the Planner agent with the current plan content."""
-        plan_content = self.plan_widget.get_plan_text()
-
     def on_project_root_changed(self, new_root):
         """Handles the project root change across the application."""
         self.file_navigator.set_root_path(new_root)
@@ -146,7 +141,6 @@ class MainWindow(QMainWindow):
         self.chat_widget.set_project_root(new_root)
         self.terminal_widget.set_project_root(new_root)
         self.status_bar_message.setText(f"Project: {new_root}")
-        logging.info(f"MainWindow: Project root changed to {new_root}")
         self._load_plan_from_file(new_root)
 
     def _load_plan_from_file(self, project_root):

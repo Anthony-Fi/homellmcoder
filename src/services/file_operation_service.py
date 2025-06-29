@@ -16,13 +16,13 @@ class FileOperationService:
 
                 # Handle run_command separately as it doesn't require a path
                 if action_type == "run_command":
-                    command = action_data.get("command")
-                    if not command:
-                        raise ValueError("'command' is a required field for run_command.")
-                    logging.info(f"Executing command: {command}")
+                    command_line = action_data.get("command_line")
+                    if not command_line:
+                        raise ValueError("'command_line' is a required field for run_command.")
+                    logging.info(f"Executing command: {command_line}")
                     try:
                         # Use subprocess.run to execute the command
-                        result = subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
+                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, check=True)
                         logging.info(f"Command stdout:\n{result.stdout}")
                         if result.stderr:
                             logging.warning(f"Command stderr:\n{result.stderr}")
@@ -30,7 +30,7 @@ class FileOperationService:
                         logging.error(f"Command failed with error: {e}\nStdout: {e.stdout}\nStderr: {e.stderr}")
                         raise e
                     except FileNotFoundError:
-                        logging.error(f"Command not found: {command.split()[0]}")
+                        logging.error(f"Command not found: {command_line.split()[0]}")
                         raise
                     continue # Move to the next action
 

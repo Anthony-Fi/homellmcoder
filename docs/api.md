@@ -87,6 +87,18 @@ Creates a new file with the specified content.
 }
 ```
 
+**`edit_file`**
+
+Modifies an existing file with the specified content. If the file does not exist, it will be created.
+
+```json
+{
+    "action": "edit_file",
+    "path": "path/to/your/existing_file.txt",
+    "content": "New content for the file."
+}
+```
+
 **`delete_file`**
 
 Deletes a file.

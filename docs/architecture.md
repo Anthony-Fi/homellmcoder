@@ -13,20 +13,20 @@ The workflow begins with the user providing a high-level goal to the `Manager Ag
 ```mermaid
 graph TD
     A[User Goal] --> B(Manager Agent);
-    B --> C{project_plan.md};
+    B --> C{plan.md}; % Manager Agent's output
     C --> D(Planner Agent);
-    D --> E{Detailed project_plan.md};
+    D --> E{project_plan.md}; % Planner Agent's output
     E --> F(Coder Agent);
-    F --> G{Code / Command Execution};
+    F --> G{Code / Command Execution}; % Coder Agent's output
     G --> H(QA/Tester Agent);
     H --> I{Tests};
     I --> J(Docs Agent);
     J --> K{Documentation};
 ```
 
-1.  **Manager Agent:** Acts as the project architect. It receives the user's goal and creates a `project_plan.md` file, which outlines the project and assigns high-level tasks to the other agents.
-2.  **Planner Agent:** Reads the `project_plan.md` file and refines it into a detailed, step-by-step execution plan. The Planner's output is strictly an updated `project_plan.md`.
-3.  **Specialist Agents (Coder, Refactor, QA/Tester, Docs):** Execute the detailed steps provided by the Planner. The `Coder Agent` can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`) directly from the plan. Each agent focuses on its specific area of expertise, ensuring high-quality output.
+1.  **Manager Agent:** Acts as the project architect. It receives the user's goal and creates a `plan.md` file, which outlines the high-level project and assigns tasks to other agents. The Manager agent's output is strictly enforced to only allow the creation of `plan.md`.
+2.  **Planner Agent:** Reads the `plan.md` file and refines it into a detailed, step-by-step execution plan. The Planner's output is strictly an updated `project_plan.md`. The Planner agent's output is strictly enforced to only allow modifications to `project_plan.md`.
+3.  **Specialist Agents (Coder, Refactor, QA/Tester, Docs):** Execute the detailed steps provided by the Planner. The `Coder Agent` can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and create/edit code files directly from the plan. The Coder agent's output is strictly enforced to prevent any modifications to `plan.md` or `project_plan.md`. Each agent focuses on its specific area of expertise, ensuring high-quality output.
 
 ## Main Components
 
