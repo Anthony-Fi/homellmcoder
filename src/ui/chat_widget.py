@@ -296,6 +296,12 @@ class LLMChatWidget(QWidget):
                         logging.warning(f"Coder agent attempted to {action_type} {action_path}. This is forbidden and the action will be discarded.")
                         continue # Skip this action
 
+                    if action_type == "run_command":
+                        command_line = action.get("command_line", "").lower()
+                        if "tkinter" in command_line:
+                            logging.warning("Coder agent attempted to install 'tkinter' via run_command. This is forbidden and the action will be discarded.")
+                            continue # Skip this action
+                    
                     if action_type in ["create_file", "edit_file", "run_command", "create_directory"]:
                         coder_approved_actions.append(action)
                     else:
