@@ -53,22 +53,21 @@ class MainWindow(QMainWindow):
 
     def _create_central_widget(self):
         """Creates and configures the main central widget with all UI components."""
-        # Main vertical splitter for the top content and the bottom terminal
-        main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.setCentralWidget(main_vertical_splitter)
+        main_vertical_splitter, top_horizontal_splitter = self._create_splitters()
+        self._populate_central_widget(main_vertical_splitter, top_horizontal_splitter)
 
-        # Top horizontal splitter for file navigator, code editor, chat, and plan
-        top_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_vertical_splitter.addWidget(top_horizontal_splitter)
+        # Set initial sizes for the splitters
+        top_horizontal_splitter.setSizes([250, 650, 300, 300])  # Adjust size for plan widget
+        main_vertical_splitter.setSizes([600, 200])
 
-        # Populate the top horizontal splitter
+    def _populate_central_widget(self, main_vertical_splitter, top_horizontal_splitter):
+        """Populates the central widget's splitters with UI components."""
         self.file_navigator = FileNavigator(self)
         top_horizontal_splitter.addWidget(self.file_navigator)
 
         self.code_editor = TabbedCodeEditor(self)
         top_horizontal_splitter.addWidget(self.code_editor)
 
-        # Bottom part: Terminal - Initialize before chat_widget
         self.terminal_widget = TerminalWidget(self)
         main_vertical_splitter.addWidget(self.terminal_widget)
 
@@ -80,9 +79,15 @@ class MainWindow(QMainWindow):
         )
         top_horizontal_splitter.addWidget(self.chat_widget)
 
-        # Set initial sizes for the splitters
-        top_horizontal_splitter.setSizes([250, 650, 300, 300])  # Adjust size for plan widget
-        main_vertical_splitter.setSizes([600, 200])
+    def _create_splitters(self):
+        """Creates and returns the main vertical and top horizontal splitters."""
+        main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.setCentralWidget(main_vertical_splitter)
+
+        top_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_vertical_splitter.addWidget(top_horizontal_splitter)
+
+        return main_vertical_splitter, top_horizontal_splitter
 
     def _create_menus(self):
         """Creates the main menu bar."""
@@ -97,6 +102,12 @@ class MainWindow(QMainWindow):
         exit_action = QAction("&Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+        # Tools Menu
+        tools_menu = menu_bar.addMenu("&Tools")
+        jedi_agent_action = QAction("Jedi Automation Agent", self)
+        jedi_agent_action.triggered.connect(self.launch_jedi_agent)
+        tools_menu.addAction(jedi_agent_action)
 
         # LLM Select Menu
         llm_menu = menu_bar.addMenu("&LLM Select")
@@ -124,21 +135,29 @@ class MainWindow(QMainWindow):
 
     def _on_run_coder_requested(self):
         """Triggers the Coder agent with the current context."""
+        instructions, file_content = self._get_coder_instructions()
+        if instructions is None or file_content is None:
+            return
+
+        # 3. Run the coder
+        self.chat_widget.run_coder_with_context(file_content, instructions)
+
+    def _get_coder_instructions(self):
+        """Retrieves the instructions from the plan widget and the content of the active file."""
         # 1. Get the instructions from the selected text in the plan
         instructions = self.plan_widget.plan_view.textCursor().selectedText()
         if not instructions:
             QMessageBox.warning(self, "No Instructions", "Please select the task instructions from the plan before running the coder.")
-            return
+            return None, None
 
         # 2. Get the content of the currently active file
         active_editor = self.code_editor.current_editor()
         if not active_editor:
             QMessageBox.warning(self, "No Active File", "Please open and select the file you want the coder to work on.")
-            return
+            return None, None
         file_content = active_editor.toPlainText()
 
-        # 3. Run the coder
-        self.chat_widget.run_coder_with_context(file_content, instructions)
+        return instructions, file_content
 
     def on_project_root_changed(self, new_root):
         """Handles the project root change across the application."""
@@ -213,23 +232,30 @@ class MainWindow(QMainWindow):
             selected_item = list_widget.currentItem()
             if selected_item:
                 model_name = selected_item.text()
-                self.status_bar_message.setText(f"Loading model: {model_name}...")
-                QApplication.processEvents()
-                if self.llm_manager.load_model(model_name):
-                    self.status_bar_message.setText(f"Model loaded: {model_name}")
-                else:
-                    self.status_bar_message.setText("Failed to load model.")
-                    QMessageBox.critical(
-                        self, "Error", f"Failed to load model: {model_name}"
-                    )
 
-    def closeEvent(self, event):
-        """Handles window close events."""
-        # Ensure the chat worker thread is gracefully shut down
-        if self.chat_widget:
-            self.chat_widget.shutdown()
-        # The chat widget now handles saving its own history.
-        super().closeEvent(event)
+    def launch_jedi_agent(self):
+        from src.jedi_agent.jedi_main import JediWindow
+        print("Attempting to launch Jedi Agent...")
+        # Ensure LLMManager is initialized before passing to JediWindow
+        if not hasattr(self, 'llm_manager') or self.llm_manager is None:
+            self.llm_manager = LLMManager()
+            print("LLMManager initialized for Jedi Agent.")
+
+        print("Before JediWindow instantiation.")
+        self.jedi_window = JediWindow(self.llm_manager)
+        print("JediWindow instance created.")
+        print("Before JediWindow show() call.")
+        self.jedi_window.show()
+        print("JediWindow show() called.")
+        print("Jedi Agent launch sequence completed.")
+
+def closeEvent(self, event):
+    """Handles window close events."""
+    # Ensure the chat worker thread is gracefully shut down
+    if self.chat_widget:
+        self.chat_widget.shutdown()
+    # The chat widget now handles saving its own history.
+    super().closeEvent(event)
 
 
 logging.basicConfig(

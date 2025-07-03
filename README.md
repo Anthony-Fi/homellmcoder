@@ -7,6 +7,7 @@ HomeLLMCoder is a local-first, AI-powered integrated development environment (ID
 - 🤖 **Agentic AI Workflow** - Leverage a local LLM to generate, execute, and refine development plans.
 - 💡 **Plan-Driven Development** - The AI creates a `plan.md` (high-level) and `project_plan.md` (detailed) for each project, which it follows step-by-step.
 - 🚀 **Automated Environment Setup & Command Execution** - Agents can now execute terminal commands (e.g., `pip install`, `npm install`, `composer create-project`), create directories, and manage files for environment setup, dependency installation, and project scaffolding. (Note: Some commands, like `python -m venv venv`, may not produce visible output during execution if successful, as they are often designed to be silent unless an error occurs.)
+- ⚔️ **Jedi Automation Agent** - A specialized, isolated workflow for fully automated code generation. It operates independently from the main chat workflow, allowing for programmatic orchestration of LLMs to generate projects into user-selected output directories without manual intervention. Ideal for large-scale, hands-off code generation tasks.
 - ⚡ **Live Streaming Terminal Output** - See the real-time output of AI-executed terminal commands directly in the integrated terminal.
 - 🔄 **Shared Agent Context** - All specialist agents share a common chat history, allowing for seamless context transfer and collaborative problem-solving.
 - 🔒 **Strict Agent Role Enforcement** - Each agent's output is strictly filtered and enforced by the UI to ensure they adhere to their specific roles and prevent unintended actions or file modifications.
@@ -26,6 +27,7 @@ HomeLLMCoder uses a team of specialized AI agents to handle your requests. This 
 - **Refactor Agent:** The code quality expert. It improves existing code without changing its functionality.
 - **QA/Tester Agent:** The quality assurance specialist. It writes tests to ensure the code is bug-free.
 - **Docs Agent:** The technical writer. It generates documentation for the code.
+- **Jedi Agent:** The autonomous code generator. It orchestrates other agents programmatically to generate entire projects without direct user interaction, focusing on hands-off, isolated code generation.
 
 ## 🚀 Quick Start
 

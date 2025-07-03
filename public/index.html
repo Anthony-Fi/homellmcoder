@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HomeLLMCoder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to HomeLLMCoder</h1>
+        <p>Your offline desktop application is running successfully!</p>
+        <p>Platform: <span id="platform"></span></p>
+        <p>Node.js: <span id="nodejs-version"></span></p>
+        <p>Server running on port <span id="port"></span></p>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('/api/info')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('platform').textContent = `${data.platform} ${data.arch}`;
+                    document.getElementById('nodejs-version').textContent = data.nodeVersion;
+                    document.getElementById('port').textContent = data.port;
+                })
+                .catch(error => console.error('Error fetching info:', error));
+        });
+    </script>
+</body>
+</html>

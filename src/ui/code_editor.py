@@ -182,36 +182,43 @@ class CodeEditor(QPlainTextEdit):
 
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
-                # Draw folding marker
-                if block_number in self.folding_regions:
-                    painter.setPen(QColor("#606060"))
-                    marker_rect = QRect(
-                        0,
-                        int(top),
-                        self.fontMetrics().horizontalAdvance("M"),
-                        self.fontMetrics().height(),
-                    )
-                    if block.next().isVisible():  # Unfolded
-                        painter.drawText(
-                            marker_rect, Qt.AlignmentFlag.AlignCenter, "−"
-                        )  # Use minus sign
-                    else:  # Folded
-                        painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "+")
+                self._draw_folding_marker(painter, block, block_number, top)
 
                 # Draw line number
-                number = str(block_number + 1)
-                painter.setPen(QColor("#a0a0a0"))
-                number_x_start = self.fontMetrics().horizontalAdvance("M") + 5
-                number_width = self.line_number_area.width() - number_x_start - 5
-                number_rect = QRect(
-                    number_x_start, int(top), number_width, self.fontMetrics().height()
-                )
-                painter.drawText(number_rect, Qt.AlignmentFlag.AlignRight, number)
+                self._draw_line_number(painter, block_number, top)
 
             block = block.next()
             top = bottom
             bottom = top + self.blockBoundingRect(block).height()
             block_number += 1
+
+    def _draw_folding_marker(self, painter, block, block_number, top):
+        """Draws the folding marker in the line number area."""
+        if block_number in self.folding_regions:
+            painter.setPen(QColor("#606060"))
+            marker_rect = QRect(
+                0,
+                int(top),
+                self.fontMetrics().horizontalAdvance("M"),
+                self.fontMetrics().height(),
+            )
+            if block.next().isVisible():  # Unfolded
+                painter.drawText(
+                    marker_rect, Qt.AlignmentFlag.AlignCenter, "−"
+                )  # Use minus sign
+            else:  # Folded
+                painter.drawText(marker_rect, Qt.AlignmentFlag.AlignCenter, "+")
+
+    def _draw_line_number(self, painter, block_number, top):
+        """Draws the line number in the line number area."""
+        number = str(block_number + 1)
+        painter.setPen(QColor("#a0a0a0"))
+        number_x_start = self.fontMetrics().horizontalAdvance("M") + 5
+        number_width = self.line_number_area.width() - number_x_start - 5
+        number_rect = QRect(
+            number_x_start, int(top), number_width, self.fontMetrics().height()
+        )
+        painter.drawText(number_rect, Qt.AlignmentFlag.AlignRight, number)
 
     def line_number_area_mouse_press_event(self, event: QMouseEvent):
         block = self.firstVisibleBlock()
@@ -310,6 +317,16 @@ class TabbedCodeEditor(QWidget):
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.layout().addWidget(self.tab_widget)
 
+    def _read_file_content(self, file_path):
+        """Reads the content of a file and returns it as a string."""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return content
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            return None
+
     def open_file(self, file_path):
         """Opens a file in a new tab or focuses the existing tab."""
         for i in range(self.tab_widget.count()):
@@ -317,11 +334,8 @@ class TabbedCodeEditor(QWidget):
                 self.tab_widget.setCurrentIndex(i)
                 return
 
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-        except Exception as e:
-            print(f"Error opening file {file_path}: {e}")
+        content = self._read_file_content(file_path)
+        if content is None:
             return
 
         editor = CodeEditor()
@@ -351,17 +365,12 @@ class TabbedCodeEditor(QWidget):
                     QMessageBox.StandardButton.Yes,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            content = f.read()
+                    content = self._read_file_content(file_path)
+                    if content is not None:
                         editor.setPlainText(content)
                         self.tab_widget.setTabText(
                             i, os.path.basename(file_path)
                         )  # Reset tab text in case of rename
-                    except Exception as e:
-                        QMessageBox.critical(
-                            self, "Error", f"Could not reload file: {e}"
-                        )
                 break
 
     def close_tab(self, index):

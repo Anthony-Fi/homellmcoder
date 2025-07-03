@@ -28,6 +28,18 @@ Excessive debug logging has been reduced to improve terminal clarity and perform
 ### Adaptive Terminal Commands
 The integrated terminal now intelligently detects your shell environment (e.g., PowerShell, CMD, Bash) and adapts virtual environment activation commands accordingly. This ensures commands like `venv\Scripts\activate` work correctly across different environments without manual intervention.
 
+## Using the Jedi Automation Agent
+
+The Jedi Automation Agent provides a fully autonomous workflow for generating code projects without direct user interaction. It operates in an isolated environment, making it ideal for large-scale, hands-off code generation tasks.
+
+1.  **Launch the Jedi Agent Window:** From the main application, navigate to `Tools` -> `Jedi Automation Agent`.
+2.  **Configure Project Details:** In the Jedi Agent window, you can:
+    -   Enter a **Project Name** for the new project.
+    -   Select an **Output Directory** where the generated code will be saved. Use the `Browse` button to choose a location.
+    -   Choose the **LLM Models** you want the Jedi Agent to use for code generation. You can select multiple models.
+3.  **Start Code Generation:** Click the `Start Agent` button to begin the automated code generation process. The Jedi Agent will orchestrate the planning, coding, and testing phases autonomously.
+4.  **Review Generated Project:** Once the generation is complete, you can use the `Open Generated Project` button to view the project in your file explorer or the `Compare Outputs` button to see a diff of the generated code.
+
 ## Chatting with the AI
 
 -   **Select a Model:** Use the dropdown menu at the top of the chat panel to select the LLM you want to use.
