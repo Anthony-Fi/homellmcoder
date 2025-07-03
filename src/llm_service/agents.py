@@ -63,6 +63,8 @@ Focus only on the current step and do not deviate from the plan. Output only the
     "docs": {
         "name": "Docs Agent",
         "description": "A specialist that writes documentation for code.",
-        "system_prompt": "You are a technical writer. Your task is to write clear, concise, and comprehensive documentation for the provided code. Follow standard documentation formats like Google Style for docstrings."
+        "system_prompt": """You are a technical writer.
+Your task is to write clear, concise, and comprehensive documentation for the provided code.
+Follow standard documentation formats like Google Style for docstrings."""
     }
 }

@@ -1,9 +1,7 @@
 import logging
 import ollama
 
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Removed global logging.basicConfig to allow central logging configuration
 
 # System prompt that guides the AI's behavior
 SYSTEM_PROMPT = """You are an expert software engineering AI. Your primary goal is to help users build and modify software projects by following a clear, step-by-step plan.
@@ -27,6 +25,7 @@ SYSTEM_PROMPT = """You are an expert software engineering AI. Your primary goal 
   - `delete_file`: Deletes a file. Requires `path`. (Only allowed for subsequent steps after `plan.md` is created and approved)
 
 **Example of a valid Manager Agent response (ONLY for creating plan.md):**
+
 ```json
 {
     "actions": [

@@ -6,6 +6,9 @@ import queue
 from PyQt6.QtCore import QObject, pyqtSignal
 
 
+# Removed global logging.basicConfig to allow central logging configuration
+
+
 class CommandOutputEmitter(QObject):
     output_received = pyqtSignal(str)
     error_received = pyqtSignal(str)
@@ -33,9 +36,8 @@ class FileOperationService:
                     if not command_line:
                         raise ValueError("'command_line' is a required field for run_command.")
                     logging.info(f"Executing command: {command_line}")
-                    command_cwd = action_data.get("cwd", project_root)
-                    if not os.path.isabs(command_cwd):
-                        command_cwd = os.path.join(project_root, command_cwd)
+                    # Force command_cwd to be project_root, ignoring any cwd from action_data
+                    command_cwd = project_root
                     logging.info(f"Executing command in CWD: {command_cwd}")
 
                     if self.output_emitter:

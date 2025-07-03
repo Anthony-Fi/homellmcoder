@@ -2,9 +2,7 @@ import logging
 from pathlib import Path
 from typing import Optional, List
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Removed global logging.basicConfig to allow central logging configuration
 
 
 class RAGSystem:

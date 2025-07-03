@@ -20,10 +20,12 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QListWidget,
+    QListWidgetItem,
     QAbstractItemView,
     QTreeView,
     QTextEdit,
-    QDialog
+    QDialog,
+    QCheckBox
 )
 from PyQt6.QtGui import QFileSystemModel
 from PyQt6.QtCore import Qt
@@ -39,27 +41,27 @@ class JediWindow(QWidget):
         self.llm_manager = llm_manager
         self.setWindowTitle("Jedi Automation Agent")
         self.setGeometry(200, 200, 600, 400)
-        try:
-            self._setup_ui()
-        except Exception as e:
-            print(f"Error during JediWindow UI setup: {e}")
-
-
+        self.main_layout = QVBoxLayout(self)
+        self._setup_ui()
 
     def _setup_ui(self):
-        try:
-            main_layout = QVBoxLayout(self)
-        except Exception as e:
-            print(f"Error during JediWindow UI setup: {e}")
-
-
         # Project Name
         project_name_layout = QHBoxLayout()
         project_name_label = QLabel("Project Name:")
         self.project_name_input = QLineEdit()
         project_name_layout.addWidget(project_name_label)
         project_name_layout.addWidget(self.project_name_input)
-        main_layout.addLayout(project_name_layout)
+        self.main_layout.addLayout(project_name_layout)
+
+        # User Request Input
+        user_request_label = QLabel("User Request (High-level Idea):")
+        self.user_request_input = QTextEdit()
+        self.user_request_input.setPlaceholderText("Describe your project idea here...")
+        self.user_request_input.setAcceptDrops(True)
+        self.user_request_input.dragEnterEvent = self._user_request_drag_enter_event
+        self.user_request_input.dropEvent = self._user_request_drop_event
+        self.main_layout.addWidget(user_request_label)
+        self.main_layout.addWidget(self.user_request_input)
 
         # Output Directory
         output_dir_layout = QHBoxLayout()
@@ -70,38 +72,49 @@ class JediWindow(QWidget):
         output_dir_layout.addWidget(output_dir_label)
         output_dir_layout.addWidget(self.output_dir_input)
         output_dir_layout.addWidget(self.browse_button)
-        main_layout.addLayout(output_dir_layout)
+        self.main_layout.addLayout(output_dir_layout)
 
         # Start Button
         self.start_button = QPushButton("Start Jedi")
         self.start_button.clicked.connect(self._start_jedi_process)
-        main_layout.addWidget(self.start_button)
+        self.main_layout.addWidget(self.start_button)
 
         # LLM Selection
         llm_selection_label = QLabel("Available LLMs:")
-        main_layout.addWidget(llm_selection_label)
+        self.main_layout.addWidget(llm_selection_label)
 
         self.llm_list_widget = QListWidget()
+        self.llm_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection) # Disable selection mode as we're using checkboxes
+
         if self.llm_manager:
             available_models = self.llm_manager.list_models()
-            self.llm_list_widget.addItems(available_models)
+            for model in available_models:
+                item = QListWidgetItem(model)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Unchecked) # Default to unchecked
+                self.llm_list_widget.addItem(item)
 
-        main_layout.addWidget(self.llm_list_widget)
+        self.main_layout.addWidget(self.llm_list_widget)
+
+        # Select All Checkbox
+        self.select_all_llms_checkbox = QCheckBox("Select All LLMs")
+        self.select_all_llms_checkbox.stateChanged.connect(self._toggle_all_llms)
+        self.main_layout.addWidget(self.select_all_llms_checkbox)
 
         self.results_list_widget = QListWidget()
         self.results_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        main_layout.addWidget(QLabel("Generated Projects:"))
-        main_layout.addWidget(self.results_list_widget)
+        self.main_layout.addWidget(QLabel("Generated Projects:"))
+        self.main_layout.addWidget(self.results_list_widget)
 
         self.open_project_button = QPushButton("Open Selected Project in Explorer")
         self.open_project_button.clicked.connect(self._open_selected_project_in_explorer)
-        main_layout.addWidget(self.open_project_button)
+        self.main_layout.addWidget(self.open_project_button)
 
         self.compare_button = QPushButton("Compare Selected Projects")
         self.compare_button.clicked.connect(self._compare_selected_projects)
-        main_layout.addWidget(self.compare_button)
+        self.main_layout.addWidget(self.compare_button)
 
-        main_layout.addStretch()
+        self.main_layout.addStretch()
 
         # File navigation and content display
         file_display_layout = QHBoxLayout()
@@ -121,7 +134,7 @@ class JediWindow(QWidget):
         file_display_layout.addWidget(self.file_tree_view)
         file_display_layout.addWidget(self.file_content_display)
         # file_display_layout.addWidget(self.diff_display)
-        main_layout.addLayout(file_display_layout)
+        self.main_layout.addLayout(file_display_layout)
 
     def _on_file_selected(self, index):
         file_path = self.file_model.filePath(index)
@@ -135,19 +148,77 @@ class JediWindow(QWidget):
         else:
             self.file_content_display.clear()
 
+    def _open_path_in_explorer(self, path):
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+
     def _compare_selected_projects(self):
         selected_items = self.results_list_widget.selectedItems()
         if not selected_items:
-            QMessageBox.warning(self, "No Selection", "Please select a generated project to open.")
+            QMessageBox.warning(self, "No Selection", "Please select a generated project to compare.") # Changed warning message
             return
 
-        selected_path = selected_items[0].text()
-        if sys.platform == "win32":
-            os.startfile(selected_path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", selected_path])
+        # Assuming compare button is for diffing two selected projects
+        if len(selected_items) != 2:
+            QMessageBox.warning(self, "Selection Error", "Please select exactly two generated projects to compare.")
+            return
+
+        path1 = selected_items[0].text()
+        path2 = selected_items[1].text()
+
+        all_diffs = self._generate_project_diff(path1, path2)
+
+        if all_diffs:
+            diff_dialog = DiffViewerDialog(all_diffs, self)
+            diff_dialog.exec()
         else:
-            subprocess.Popen(["xdg-open", selected_path])
+            QMessageBox.information(self, "Comparison", "No differences found between the selected projects.")
+
+    def _generate_project_diff(self, path1, path2):
+        """Generates a unified diff between two project directories."""
+        all_diffs = []
+
+        # Get all files in both directories
+        files1 = {os.path.relpath(os.path.join(root, file), path1) for root, _, files in os.walk(path1) for file in files}
+        files2 = {os.path.relpath(os.path.join(root, file), path2) for root, _, files in os.walk(path2) for file in files}
+
+        common_files = sorted(list(files1.intersection(files2)))
+        only_in_1 = sorted(list(files1 - files2))
+        only_in_2 = sorted(list(files2 - files1))
+
+        # Compare common files
+        for rel_path in common_files:
+            file1_path = os.path.join(path1, rel_path)
+            file2_path = os.path.join(path2, rel_path)
+
+            try:
+                with open(file1_path, 'r', encoding='utf-8', errors='ignore') as f1:
+                    content1 = f1.readlines()
+                with open(file2_path, 'r', encoding='utf-8', errors='ignore') as f2:
+                    content2 = f2.readlines()
+
+                diff = list(difflib.unified_diff(content1, content2, fromfile=os.path.join(os.path.basename(path1), rel_path), tofile=os.path.join(os.path.basename(path2), rel_path)))
+                if diff:
+                    all_diffs.extend(diff)
+            except Exception as e:
+                all_diffs.append(f"Error comparing {rel_path}: {e}\n")
+
+        # Report files only in one project
+        if only_in_1:
+            all_diffs.append(f"\n--- Files only in {os.path.basename(path1)} ---\n")
+            for rel_path in only_in_1:
+                all_diffs.append(f"- {rel_path}\n")
+
+        if only_in_2:
+            all_diffs.append(f"\n--- Files only in {os.path.basename(path2)} ---\n")
+            for rel_path in only_in_2:
+                all_diffs.append(f"- {rel_path}\n")
+
+        return "".join(all_diffs)
 
     def _open_selected_project_in_explorer(self):
         selected_items = self.results_list_widget.selectedItems()
@@ -156,25 +227,7 @@ class JediWindow(QWidget):
             return
 
         selected_path = selected_items[0].text()
-        if sys.platform == "win32":
-            os.startfile(selected_path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", selected_path])
-        else:
-            subprocess.Popen(["xdg-open", selected_path])
-
-    def _on_project_selection_changed(self):
-        selected_items = self.results_list_widget.selectedItems()
-        if not selected_items:
-            self.file_model.setRootPath("")
-            self.file_tree_view.setRootIndex(self.file_model.index(""))
-            self.file_content_display.clear()
-            return
-
-        selected_path = selected_items[0].text()
-        self.file_model.setRootPath(selected_path)
-        self.file_tree_view.setRootIndex(self.file_model.index(selected_path))
-        self.file_content_display.clear()
+        self._open_path_in_explorer(selected_path)
 
     def _browse_output_directory(self):
         directory = QFileDialog.getExistingDirectory(self, "Select Output Directory")
@@ -184,6 +237,7 @@ class JediWindow(QWidget):
     def _start_jedi_process(self):
         project_name = self.project_name_input.text()
         output_directory = self.output_dir_input.text()
+        user_request = self.user_request_input.toPlainText()
 
         if not project_name:
             QMessageBox.warning(self, "Input Error", "Please enter a project name.")
@@ -191,8 +245,11 @@ class JediWindow(QWidget):
         if not output_directory:
             QMessageBox.warning(self, "Input Error", "Please select an output directory.")
             return
+        if not user_request:
+            QMessageBox.warning(self, "Input Error", "Please enter a user request.")
+            return
 
-        selected_llms = [item.text() for item in self.llm_list_widget.selectedItems()]
+        selected_llms = [item.text() for item in self.llm_list_widget.findItems('*', Qt.MatchFlag.MatchWildcard) if item.checkState() == Qt.CheckState.Checked]
         if not selected_llms:
             QMessageBox.warning(self, "Input Error", "Please select at least one LLM.")
             return
@@ -217,7 +274,6 @@ class JediWindow(QWidget):
 
             try:
                 # Step 1: Planner Agent generates initial plan
-                user_request = "Generate a simple calculator application with basic arithmetic operations (add, subtract, multiply, divide) in Python. The application should have a command-line interface."
                 print(f"    Planner Agent: Generating plan for '{user_request}'")
                 initial_plan = planner_agent.execute(user_request)
                 print(f"    Initial Plan: {initial_plan}")
@@ -302,6 +358,36 @@ class JediWindow(QWidget):
         except Exception as e:
             print(f"        An unexpected error occurred during Git operations: {e}")
             QMessageBox.warning(self, "Jedi Warning", f"An unexpected error occurred during Git operations for {llm_name}: {e}")
+
+    def _user_request_drag_enter_event(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _user_request_drop_event(self, event):
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if file_path.endswith(('.txt', '.md', '.py', '.json', '.yaml', '.yml')):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    current_text = self.user_request_input.toPlainText()
+                    self.user_request_input.setPlainText(current_text + "\n\n" + f"--- Content from {file_path} ---\n" + content + "\n---\n")
+                except Exception as e:
+                    QMessageBox.warning(self, "File Read Error", f"Could not read file {file_path}: {e}")
+            else:
+                QMessageBox.warning(self, "Unsupported File Type", f"Unsupported file type: {file_path}. Only text-based files are supported.")
+        event.acceptProposedAction()
+
+    def _toggle_all_llms(self, state):
+        if state == Qt.CheckState.Checked:
+            for i in range(self.llm_list_widget.count()):
+                self.llm_list_widget.item(i).setCheckState(Qt.CheckState.Checked)
+        else:
+            for i in range(self.llm_list_widget.count()):
+                self.llm_list_widget.item(i).setCheckState(Qt.CheckState.Unchecked)
+        self.llm_list_widget.update() # Force UI refresh
 
 
 class DiffViewerDialog(QDialog):

@@ -258,9 +258,6 @@ def closeEvent(self, event):
     super().closeEvent(event)
 
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 app = QApplication(sys.argv)
 window = MainWindow()
 window.show()

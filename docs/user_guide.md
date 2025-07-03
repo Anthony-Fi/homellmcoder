@@ -30,15 +30,18 @@ The integrated terminal now intelligently detects your shell environment (e.g., 
 
 ## Using the Jedi Automation Agent
 
-The Jedi Automation Agent provides a fully autonomous workflow for generating code projects without direct user interaction. It operates in an isolated environment, making it ideal for large-scale, hands-off code generation tasks.
+The Jedi Automation Agent provides a fully autonomous workflow for generating code projects without direct user interaction. It operates in an isolated environment, making it ideal for large-scale, hands-off code generation tasks. Each generated project is placed in a uniquely named subfolder within your chosen output directory, ensuring no accidental overwrites.
 
 1.  **Launch the Jedi Agent Window:** From the main application, navigate to `Tools` -> `Jedi Automation Agent`.
 2.  **Configure Project Details:** In the Jedi Agent window, you can:
-    -   Enter a **Project Name** for the new project.
+    -   Enter a **Project Name** for the new project. This will be used to create a unique subfolder for your generated project.
     -   Select an **Output Directory** where the generated code will be saved. Use the `Browse` button to choose a location.
-    -   Choose the **LLM Models** you want the Jedi Agent to use for code generation. You can select multiple models.
-3.  **Start Code Generation:** Click the `Start Agent` button to begin the automated code generation process. The Jedi Agent will orchestrate the planning, coding, and testing phases autonomously.
-4.  **Review Generated Project:** Once the generation is complete, you can use the `Open Generated Project` button to view the project in your file explorer or the `Compare Outputs` button to see a diff of the generated code.
+    -   Choose the **LLM Models** you want the Jedi Agent to use for code generation. You can select multiple models, and the Jedi Agent will run the orchestration for each selected model sequentially.
+3.  **Start Code Generation:** Click the `Start Agent` button to begin the automated code generation process. The Jedi Agent will orchestrate the planning, coding, and testing phases autonomously. During this process, it will also perform post-generation tasks such as Black formatting and Git initialization within each generated project's subfolder.
+4.  **Review Generated Project:** Once the generation is complete, the Jedi Agent UI will display a list of all generated projects. You can select a project to:
+    -   Use the `Open Generated Project` button to view the project in your system's file explorer.
+    -   Browse the generated files directly within the Jedi Agent's integrated file viewer.
+    -   Use the `Compare Outputs` button to see a detailed diff comparison of the generated code, if multiple LLMs were used or if you are comparing different versions.
 
 ## Chatting with the AI
 
