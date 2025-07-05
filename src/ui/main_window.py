@@ -148,16 +148,7 @@ class MainWindow(QMainWindow):
         instructions = self.plan_widget.plan_view.textCursor().selectedText()
         if not instructions:
             QMessageBox.warning(self, "No Instructions", "Please select the task instructions from the plan before running the coder.")
-            return None, None
 
-        # 2. Get the content of the currently active file
-        active_editor = self.code_editor.current_editor()
-        if not active_editor:
-            QMessageBox.warning(self, "No Active File", "Please open and select the file you want the coder to work on.")
-            return None, None
-        file_content = active_editor.toPlainText()
-
-        return instructions, file_content
 
     def on_project_root_changed(self, new_root):
         """Handles the project root change across the application."""

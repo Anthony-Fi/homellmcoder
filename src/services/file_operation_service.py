@@ -27,6 +27,13 @@ class FileOperationService:
             raise ValueError("Invalid project root.")
 
         for action_data in actions:
+            if not isinstance(action_data, dict):
+                logging.error(f"Skipping malformed action data: {action_data}. Expected a dictionary, but received {type(action_data).__name__}.")
+                continue
+            if "action" not in action_data:
+                logging.error(f"Skipping malformed action data: {action_data}. Missing 'action' key.")
+                continue
+
             try:
                 action_type = action_data.get("action")
 
@@ -91,7 +98,8 @@ class FileOperationService:
                 # For all other actions, 'path' is required
                 path = action_data.get("path")
                 if not path:
-                    raise ValueError("'path' is a required field for all actions except run_command.")
+                    logging.error(f"Skipping action {action_type} due to missing 'path' field: {action_data}")
+                    continue
 
                 full_path = os.path.join(project_root, path)
 

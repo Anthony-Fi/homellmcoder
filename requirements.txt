@@ -6,7 +6,8 @@ python-dotenv==1.0.0
 requests==2.31.0
 
 # LLM / AI
-ollama==0.2.1
+llama-cpp-python==0.2.27
+json_repair
 
 # GUI Framework
 PyQt6==6.7.0
