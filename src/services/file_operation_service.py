@@ -20,12 +20,15 @@ class FileOperationService:
     def __init__(self, output_emitter: CommandOutputEmitter = None):
         self.output_emitter = output_emitter
 
-    def execute_actions(self, project_root, actions):
-        """Executes a list of file operations."""
+    def execute_actions(self, project_root, actions, capture_output=False):
+        """Executes a list of file operations. If capture_output is True, returns (success, stdout, stderr) for the last command."""
         if not project_root or not os.path.isdir(project_root):
             logging.error(f"Invalid project root provided: {project_root}")
             raise ValueError("Invalid project root.")
 
+        last_stdout = None
+        last_stderr = None
+        last_command = None
         for action_data in actions:
             if not isinstance(action_data, dict):
                 logging.error(f"Skipping malformed action data: {action_data}. Expected a dictionary, but received {type(action_data).__name__}.")
@@ -85,10 +88,19 @@ class FileOperationService:
 
                         if exit_code != 0:
                             logging.error(f"Command exited with code {exit_code}: {command_line}")
+                            # No easy way to capture full output here, so just raise
                             raise subprocess.CalledProcessError(exit_code, command_line)
                     else:
                         # Fallback to subprocess.run if no emitter is provided (e.g., for tests)
-                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, check=True, cwd=command_cwd)
+                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, cwd=command_cwd)
+                        last_stdout = result.stdout
+                        last_stderr = result.stderr
+                        last_command = command_line
+                        if result.returncode != 0:
+                            logging.error(f"Command exited with code {result.returncode}: {command_line}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+                            if capture_output:
+                                return False, result.stdout, result.stderr, command_line
+                            raise subprocess.CalledProcessError(result.returncode, command_line, result.stdout, result.stderr)
                         logging.info(f"Command stdout:\n{result.stdout}")
                         if result.stderr:
                             logging.warning(f"Command stderr:\n{result.stderr}")
@@ -142,6 +154,8 @@ class FileOperationService:
                 raise e
 
         logging.info("All file operations executed successfully.")
+        if capture_output and last_command is not None:
+            return True, last_stdout, last_stderr, last_command
 
     def read_file(self, project_root: str, path: str) -> str:
         """Reads the content of a file within the project root."""

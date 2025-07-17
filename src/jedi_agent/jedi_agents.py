@@ -32,6 +32,21 @@ def _escape_json_string_value(s):
     return s
 
 AGENTS = {
+    "fixer": {
+        "name": "Fixer Agent",
+        "description": "Repairs or rewrites outputs to ensure valid JSON with an actions list.",
+        "system_prompt": r"""
+You are a Fixer Agent. Your job is to repair or rewrite agent outputs that are not valid JSON.
+You will receive:
+- The original plan or instructions.
+- The broken or malformed output.
+- Any error messages or context.
+
+Your output must be a single valid JSON object with an 'actions' list containing all required steps.
+Do not include any text, explanations, or markdown outside the JSON.
+If you must reconstruct missing actions, do so based on the plan and context.
+"""
+    },
     "manager": {
         "name": "Manager Agent",
         "description": "Creates a high-level project plan and assigns roles.",
@@ -45,67 +60,54 @@ Example output: {\"refined_plan\": {\"steps\": [\"Step 1: Create index.html\", \
     "planner": {
         "name": "Planner Agent",
         "description": "Refines a high-level goal into a detailed, step-by-step project plan in project_plan.md.",
-        "system_prompt": r"""You are a highly experienced project planner and architect. Your role is to create a detailed project plan based on the user's request. This plan will guide the subsequent agents (Manager, Coder, Tester, Documenter) in their tasks.
+        "system_prompt": r"""
+You are an expert project planner for automated web application generation.
 
-Your output MUST be a single JSON object inside a ````json ... ```` block. Do not include any other text or explanation outside of the JSON.
-The JSON object must contain one key: "actions". The "actions" key MUST be a SINGLE LIST containing ALL file operations required to create the project plan. Each element in this list must be a file operation (e.g., create_file, edit_file).
-
-When the user requests a new Laravel project, your plan MUST include a `run_command` action with `command_line`: `laravel new <project_name>`.
+Your mission is to generate a step-by-step JSON plan that:
+1. Scaffolds the requested platform (e.g., Laravel, Django, React) using a `run_command` action.
+2. Immediately implements the main requested features in the scaffolded app using additional actions (e.g., create_file, edit_file, run_command).
+3. Ensures the generated app is runnable and includes basic UI to demonstrate the requested features.
+4. Avoids placeholder text or vague steps—each step must result in a concrete file or code change.
+5. Before executing each step, analyze the planned action and proactively predict any likely requirements (such as PHP extensions, system packages, or environment variables). If any are missing, add installation or enablement steps to the plan before the affected action.
+6. If any step fails during execution, analyze the error message and update the plan to resolve the issue. Suggest installation commands, alternative packages, or code changes as needed. Always output the updated plan as a single JSON object.
+7. If the user requests QR code scanning and map plotting, your plan MUST include:
+    - Installation of any required QR code and mapping packages (with `run_command`).
+    - Creation of controllers, routes, and views to scan QR codes, store/track them, and plot them on a map (e.g., using Leaflet.js or Google Maps in the Laravel Blade template).
+    - A basic UI to interact with these features.
+8. Your output MUST be a single JSON object inside a ```json ... ``` block, with an `actions` list containing ALL file and command operations.
+9. Do NOT include any text, explanations, or Markdown outside the JSON block.
 
 Example output:
-````json
+```json
 {
-    "actions": [
-        {
-            "action": "create_file",
-            "path": "project_plan.md",
-            "content": "# Project Plan\n\n## 1. Overview\nThis is a sample project plan.\n"
-        }
-    ]
+  "actions": [
+    {"action": "run_command", "command_line": "composer create-project laravel/laravel my-laravel-app"},
+    {"action": "run_command", "cwd": "my-laravel-app", "command_line": "composer require simplesoftwareio/simple-qrcode"},
+    {"action": "run_command", "cwd": "my-laravel-app", "command_line": "composer require guzzlehttp/guzzle"},
+    {"action": "create_file", "path": "my-laravel-app/routes/web.php", "content": "// Laravel routes for QR and map features..."},
+    {"action": "create_file", "path": "my-laravel-app/app/Http/Controllers/QRCodeController.php", "content": "// PHP controller for QR code scanning and tracking..."},
+    {"action": "create_file", "path": "my-laravel-app/resources/views/map.blade.php", "content": "<!-- Blade template with Leaflet.js map and QR code UI -->"}
+  ]
 }
-````
+```
 
-Your output MUST include ALL necessary file operations (create_file, edit_file) to create the project plan. You are ABSOLUTELY FORBIDDEN from creating or modifying any files other than 'project_plan.md' or 'plan.md'."""
+If you do not know how to implement a requested feature, still create a stub file and add a TODO comment explaining what should go there.
+""",
     },
 
     "coder": {
         "name": "Coder Agent",
         "description": "A specialist that writes new code based on a plan.",
-        "system_prompt": r"""You are an expert web developer.
-Your task is to write clean, efficient, and well-documented code for web projects (HTML, CSS, JavaScript).
-You MUST strictly adhere to the project plan provided in `project_plan.md`. Prioritize secure coding practices, industry standards, and maintainable code.
+        "system_prompt": r"""You are an expert web developer. Your task is to write clean, efficient, and well-documented code for web projects (HTML, CSS, JavaScript). You MUST strictly adhere to the project plan provided in `project_plan.md`. Prioritize secure coding practices, industry standards, and maintainable code.
 
-Your output MUST be a single JSON object inside a ````json ... ```` block.
-Do not include any other text or explanation outside of the JSON.
-The JSON object must contain one key: "actions".
-The "actions" key MUST be a SINGLE LIST containing ALL file operations and command executions required to fully implement the provided `refined_plan`. Each element in this list must be a file operation or a command execution. Do NOT create multiple "actions" keys or separate lists of actions. Ensure all actions are combined into this single list.
+Your output MUST be a single JSON object inside a ````json ... ```` block. Do not include any other text or explanation outside of the JSON. If you output anything other than valid JSON, your response will be considered invalid and discarded, leading to system failure. Always output only the JSON.
+The JSON object must contain one key: "actions". The "actions" key MUST be a SINGLE LIST containing ALL file operations and command executions required to fully implement the provided `refined_plan`. Each element in this list must be a file operation or a command execution. Do NOT create multiple "actions" keys or separate lists of actions. Ensure all actions are combined into this single list.
 
-**IMPORTANT:** All [path](cci:1://file:///g:/homellmcoder/src/jedi_agent/jedi_main.py:150:4-156:48) values for `create_file`, `edit_file`, and `create_directory` actions MUST be relative to the current project root.
-For web projects, place `index.html` and other HTML pages (e.g., `about.html`, `services.html`) in the root directory. Place CSS files in a `css/` subdirectory (e.g., `css/style.css`) and JavaScript files in a `js/` subdirectory (e.g., `js/script.js`).
+**IMPORTANT:** All path values for `create_file`, `edit_file`, and `create_directory` actions MUST be relative to the current project root. For web projects, place `index.html` and other HTML pages in the root directory. Place CSS files in a `css/` subdirectory and JavaScript files in a `js/` subdirectory.
 
-**STRICTLY FORBIDDEN:**
-- Generating any Python files ([.py](cci:7://file:///g:/homellmcoder/src/jedi_agent/__init__.py:0:0-0:0)), or any other non-web-related files.
-- Generating `run_command` actions for installing Python packages (e.g., `pip install`).
-- Generating `run_command` actions for backend frameworks (e.g., `npm install express`).
-- Generating `run_command` actions like `composer install`, `composer create-project`, or `php artisan setup` for initial Laravel project creation. These are strictly forbidden.
+**STRICTLY FORBIDDEN:** - Generating any Python files or any other non-web-related files. - Generating `run_command` actions for installing Python packages. - Generating `run_command` actions for backend frameworks. - Generating `run_command` actions like `composer install`, `composer create-project`, or `php artisan setup` for initial Laravel project creation.
 
-
-**ALLOWED ACTIONS:**
-- `create_file`: Creates a new file. Requires [path](cci:1://file:///g:/homellmcoder/src/jedi_agent/jedi_main.py:150:4-156:48) and `content` (use `\\n` for newlines and `\\"` for double quotes, and properly escape other special characters for JSON validity).
-- `edit_file`: Edits an existing file (overwrites). Requires [path](cci:1://file:///g:/homellmcoder/src/jedi_agent/jedi_main.py:150:4-156:48) and `content` (use `\\n` for newlines and `\\"` for double quotes, and properly escape other special characters for JSON validity).
-- `create_directory`: Creates a new directory. Requires [path](cci:1://file:///g:/homellmcoder/src/jedi_agent/jedi_main.py:150:4-156:48).
-- `run_command`: Executes a terminal command. Use sparingly and only for front-end build tools (e.g., `npm install` for a React/Vue/Angular project, or `npm run build`). If `npm install` is used, ensure a `package.json` file is created first. **For new Laravel projects, you MUST use `laravel new <project_name> --no-interaction` to create the project. This is the ONLY allowed command for initial Laravel project creation. After this, you MUST include separate `run_command` actions for `php artisan key:generate`, `npm install`, and `npm run build` for post-installation setup.** Each `run_command` action requires `command_line` and `cwd` (current working directory, which should be the project root). The key for the command must be `command_line`, not `command`.
-
-Example `create_file` action (for `composer.json`):
-```json
-{
-    "action": "create_file",
-    "path": "composer.json",
-    "content": "{\\n  \\\"name\\\": \\\"laravel/laravel\\\",\\n  \\\"description\\\": \\\"A Laravel project.\\\",\\n  \\\"type\\\": \\\"project\\\",\\n  \\\"license\\\": \\\"MIT\\\",\\n  \\\"autoload\\\": {\\n    \\\"psr-4\\\": {\\n      \\\"App\\\\\\\\\\\": \\\"app/\\\\\\\\\\\"\\n    }\\n  },\\n  \\\"require\\\": {\\n    \\\"php\\\": \\\"^8.2\\\",\\n    \\\"laravel/framework\\\": \\\"^11.0\\\"\\n  },\\n  \\\"config\\\": {\\n    \\\"optimize-autoloader\\\": true,\\n    \\\"preferred-install\\\": \\\"dist\\\",\\n    \\\"sort-packages\\\": true\\n  }\\n}\\n\"
-}
-For example, if the refined plan requires a composer.json file with a specific configuration, you should generate a create_file action with the correct content. Make sure to escape any special characters in the content string.
-
-Your output MUST include ALL necessary file operations (create_file, edit_file, create_directory) and commands (run_command) required to fully implement the provided `refined_plan`. Ensure all actions are included in a single JSON object. You are ABSOLUTELY FORBIDDEN from creating or modifying 'plan.md' or 'project_plan.md'.""",
+**ALLOWED ACTIONS:** - `create_file`: Requires path and content. - `edit_file`: Requires path and content. - `create_directory`: Requires path. - `run_command`: Requires command_line and cwd. Use sparingly and only for front-end build tools.""",
     },
 }
 
@@ -127,32 +129,51 @@ class BaseAgent:
         if self.llm_manager.loaded_model != self.llm_name:
             if not self.llm_manager.load_model(self.llm_name):
                 raise RuntimeError(f"Failed to load LLM model: {self.llm_name}")
-
+        
         full_messages = [{
             "role": "system",
             "content": self.system_prompt
         }]
         full_messages.extend(messages)
+        
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            response_content = ""
+            for chunk in self.llm_manager.stream_chat(full_messages):
+                if "message" in chunk and "content" in chunk["message"]:
+                    response_content += chunk["message"]["content"]
+            
+            logging.debug(f"Raw LLM response from {self.llm_name} on attempt {attempt+1}:\n{response_content}")
+            
+            parsed_data = extract_and_repair_json(response_content)
+            if 'error' not in parsed_data and parsed_data is not None:
+                logging.debug(f"Successfully parsed JSON on attempt {attempt+1}")
+                return parsed_data
+            else:
+                logging.error(f"JSON parsing failed on attempt {attempt+1}: {parsed_data.get('error', 'Unknown error')}")
+                if attempt < max_retries:
+                    # Re-prompt with a strict instruction for JSON output
+                    retry_message = {"role": "user", "content": "Your response was not in valid JSON format. Please output ONLY a valid JSON object as per the system prompt. No markdown, explanations, or other text."}
+                    full_messages.append(retry_message)
+                else:
+                    logging.error("Max retries reached for JSON parsing.")
+                    return {"error": "Failed to get valid JSON after multiple attempts"}
+        return {"error": "Unexpected end of retries"}
 
-        response_content = ""
-        for chunk in self.llm_manager.stream_chat(full_messages):
-            if "message" in chunk and "content" in chunk["message"]:
-                response_content += chunk["message"]["content"]
-
-        logging.debug(f"Raw LLM response from {self.llm_name}:\n{response_content}")
-
-        # Use the new json_repair_service to extract and repair JSON
-
-        parsed_data = extract_and_repair_json(response_content)
-
-        if parsed_data is None:
-            logging.error(f"Failed to extract and parse JSON from LLM response: {response_content}")
-            return None
-
-        logging.debug(f"Successfully parsed JSON from LLM: {parsed_data}")
-        if self.agent_type == "coder":
-            logging.debug(f"Coder Agent parsed data: {json.dumps(parsed_data, indent=2)}")
-        return parsed_data
+    def execute(self, user_request: str):
+        messages = [{"role": "user", "content": user_request}]
+        response = self._get_response(messages)
+        # _get_response now returns a parsed dictionary, so no need for json.loads()
+        if response and not response.get("error"):
+            return response
+        else:
+            print(
+                f"Warning: Planner Agent did not return valid JSON: {response.get('raw_response', 'N/A')}"
+            )
+            return {
+                "error": "Invalid JSON response",
+                "raw_response": response.get("raw_response", "N/A"),
+            }
 
 
 class PlannerAgent(BaseAgent):
@@ -207,68 +228,25 @@ class CoderAgent(BaseAgent):
         super().__init__(llm_manager, llm_name, "coder")
 
     def execute(self, plan_actions: dict):
-        # Coder agent generates code actions based on the refined plan
         messages = [
             {
                 "role": "user",
-                "content": f"Generate code based on the following plan: {json.dumps(plan_actions)}",
+                "content": f"Generate code based on the following plan: {json.dumps(plan_actions)}"
             }
         ]
         response = self._get_response(messages)
-        # _get_response now returns a parsed dictionary, so no need for json.loads()
-        # If the response is a list containing a single dictionary, extract that dictionary
-        if isinstance(response, list) and len(response) == 1 and isinstance(response[0], dict):
-            response = response[0]
-
         if isinstance(response, dict) and "actions" in response and isinstance(response["actions"], list):
-            processed_actions = []
-            laravel_new_found = False
-            project_name = ""
-
+            valid_actions = []
             for action in response["actions"]:
-                if action.get("action") == "run_command":
-                    command_line = action.get("command_line", "").lower()
-                    if "laravel new" in command_line and "--no-interaction" in command_line:
-                        laravel_new_found = True
-                        # Extract project name from the command_line
-                        try:
-                            project_name = command_line.split('laravel new ')[1].split(' --no-interaction')[0].strip()
-                        except IndexError:
-                            project_name = "laravel-project" # Default if parsing fails
-                        processed_actions.append(action)
-                    elif "composer install" in command_line or "composer create-project" in command_line or "php artisan setup" in command_line:
-                        logging.warning(f"Forbidden command detected and removed: {command_line}")
-                        continue # Skip forbidden commands
-                    else:
-                        processed_actions.append(action)
+                if action.get("action") in ["create_file", "edit_file"] and "content" not  in action:
+                    logging.error(f"Invalid action: missing 'content' for action type {action.get('action')}")
+                    return {"error": f"Invalid action structure: missing 'content' for {action.get('action')}", "raw_response": response}
+                elif action.get("action") in ["run_command"] and "command_line" not in action:
+                    logging.error(f"Invalid action: missing 'command_line' for run_command")
+                    return {"error": f"Invalid action structure: missing 'command_line' for run_command", "raw_response": response}
                 else:
-                    processed_actions.append(action)
-            
-            # If laravel new was found, ensure post-installation steps are present and separate
-            if laravel_new_found:
-                # Define the required post-installation commands
-                required_post_install_commands = [
-                    f"cd {project_name} && php artisan key:generate",
-                    f"cd {project_name} && npm install",
-                    f"cd {project_name} && npm run build"
-                ]
-                
-                # Check if they are already in processed_actions and add if not
-                for cmd in required_post_install_commands:
-                    if not any(a.get("command_line", "").lower() == cmd.lower() for a in processed_actions):
-                        processed_actions.append({
-                            "action": "run_command",
-                            "command_line": cmd,
-                            "cwd": project_name # Use the project name as cwd for these commands
-                        })
-
-            response["actions"] = processed_actions
-            return response
+                    valid_actions.append(action)
+            return {"actions": valid_actions}
         else:
-            error_message = f"Coder Agent did not return valid JSON or expected 'actions' structure. Response: {response}"
-            logging.error(f"Warning: {error_message}")
-            return {
-                "error": "Invalid JSON response or structure",
-                "details": error_message,
-                "raw_response": response,
-            }
+            logging.error(f"Coder Agent did not return expected structure: {response}")
+            return {"error": "Invalid response structure from Coder Agent", "raw_response": response}

@@ -133,6 +133,29 @@ class MainWindow(QMainWindow):
         self.command_output_emitter.error_received.connect(self.terminal_widget.append_error)
         self.command_output_emitter.command_finished.connect(self.terminal_widget.command_finished)
 
+        # --- Builder/Agent Live Log Integration ---
+        try:
+            from src.ui.builder_signals import BuilderSignals
+            self.builder_signals = BuilderSignals()
+            self.builder_signals.log_message.connect(self.append_to_log)
+            self.builder_signals.command_output.connect(self.append_to_log)
+            self.builder_signals.command_error.connect(self.append_to_log)
+            self.builder_signals.command_prompt.connect(self.prompt_user)
+        except ImportError:
+            self.builder_signals = None  # fallback if not available
+
+    def append_to_log(self, message):
+        """Appends a log message to the terminal widget (live agent/command log)."""
+        if hasattr(self, 'terminal_widget'):
+            self.terminal_widget.append_output(str(message))
+
+    def prompt_user(self, message, callback):
+        """Prompt the user for input in response to a command needing input."""
+        from PyQt6.QtWidgets import QInputDialog
+        user_input, ok = QInputDialog.getText(self, "Command Needs Input", message)
+        if ok:
+            callback(user_input)
+
     def _on_run_coder_requested(self):
         """Triggers the Coder agent with the current context."""
         instructions, file_content = self._get_coder_instructions()
@@ -143,11 +166,26 @@ class MainWindow(QMainWindow):
         self.chat_widget.run_coder_with_context(file_content, instructions)
 
     def _get_coder_instructions(self):
-        """Retrieves the instructions from the plan widget and the content of the active file."""
-        # 1. Get the instructions from the selected text in the plan
-        instructions = self.plan_widget.plan_view.textCursor().selectedText()
-        if not instructions:
+        """Retrieves the instructions from the plan widget and the content of the active file.
+        Ensures only a selected task (not the whole plan) is sent to the Coder agent.
+        """
+        plan_text = self.plan_widget.plan_view.toPlainText()
+        selected_text = self.plan_widget.plan_view.textCursor().selectedText().strip()
+        # If nothing is selected or the selection is too large, warn the user
+        if not selected_text:
             QMessageBox.warning(self, "No Instructions", "Please select the task instructions from the plan before running the coder.")
+            return None, None
+        # If the selection is nearly the whole plan, warn the user
+        if len(selected_text) > 0.9 * len(plan_text):
+            QMessageBox.warning(self, "Too Much Selected", "Please select only the relevant task or step from the plan, not the entire plan.")
+            return None, None
+        # Optionally, block if the selection mentions plan.md/project_plan.md creation
+        if 'plan.md' in selected_text.lower() or 'project_plan.md' in selected_text.lower():
+            QMessageBox.warning(self, "Invalid Task", "Do not select instructions related to creating or modifying plan.md/project_plan.md.")
+            return None, None
+        # You can also add more filters here if needed
+        # (file_content can be fetched as before, or left as None if not needed)
+        return selected_text, None
 
 
     def on_project_root_changed(self, new_root):
@@ -223,6 +261,20 @@ class MainWindow(QMainWindow):
             selected_item = list_widget.currentItem()
             if selected_item:
                 model_name = selected_item.text()
+                # Actually load the selected model
+                success = self.llm_manager.load_model(model_name)
+                if success:
+                    QMessageBox.information(
+                        self,
+                        "LLM Model Loaded",
+                        f"Successfully loaded model: {model_name}"
+                    )
+                else:
+                    QMessageBox.critical(
+                        self,
+                        "Load Failed",
+                        f"Failed to load model: {model_name}"
+                    )
 
     def launch_jedi_agent(self):
         from src.jedi_agent.jedi_main import JediWindow

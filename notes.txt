@@ -1,0 +1,3 @@
+python src\jedi_agent\jedi_main.py - Starts the JEDI coder.
+
+python -m src.main - starts the main programme

@@ -34,6 +34,7 @@ from PyQt6.QtGui import QTextCharFormat, QColor
 from src.llm_service.manager import LocalLLMManager
 from src.services.file_operation_service import FileOperationService
 from src.jedi_agent.jedi_agents import PlannerAgent, ManagerAgent, CoderAgent
+from src.jedi_agent.fixer_agent import FixerAgent
 
 class JediWindow(QWidget):
     def __init__(self, llm_manager=None):
@@ -288,12 +289,57 @@ class JediWindow(QWidget):
                 code_actions = coder_agent.execute(refined_plan) # Coder generates file operations
                 print(f"    Generated Code Actions: {code_actions}")
 
-                # Step 4: FileOperationService executes file actions
-                print(f"    FileOperationService: Executing file operations...")
-                # Ensure project_root is consistently llm_output_path for all agent-generated files
-                file_operation_service.execute_actions(actions=code_actions.get('actions', []), project_root=llm_output_path)
-                print(f"    File operations executed for {llm_name}")
+                # --- Fixer Agent Path for Output Errors ---
+                if not code_actions or 'actions' not in code_actions or not isinstance(code_actions['actions'], list):
+                    print(f"    Coder Agent output invalid or missing actions. Invoking Fixer Agent...")
+                    fixer_agent = FixerAgent(self.llm_manager, llm_name)
+                    fixer_prompt = [
+                        {"role": "system", "content": fixer_agent.system_prompt},
+                        {"role": "user", "content": f"Original plan/instructions:\n{refined_plan}\n\nMalformed output:\n{code_actions}\n"}
+                    ]
+                    code_actions = fixer_agent._get_response(fixer_prompt)
+                    print(f"    Fixer Agent produced: {code_actions}")
 
+                # --- Runtime Execution Loop with Error Recovery ---
+                actions_list = code_actions.get('actions', [])
+                i = 0
+                retry_limit = 5
+                retry_count = 0
+                while i < len(actions_list) and retry_count < retry_limit:
+                    action = actions_list[i]
+                    try:
+                        print(f"    Executing action {i+1}/{len(actions_list)}: {action}")
+                        # Only capture output for run_command actions
+                        if action.get('action') == 'run_command':
+                            success, stdout, stderr, cmd = file_operation_service.execute_actions(actions=[action], project_root=llm_output_path, capture_output=True)
+                            if not success:
+                                raise RuntimeError(f"Command failed: {cmd}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+                        else:
+                            file_operation_service.execute_actions(actions=[action], project_root=llm_output_path)
+                        i += 1
+                        retry_count = 0  # Reset on success
+                    except Exception as e:
+                        print(f"    Error during action execution: {e}")
+                        # Try to extract terminal output from error
+                        terminal_output = str(e)
+                        fixer_agent = FixerAgent(self.llm_manager, llm_name)
+                        fixer_prompt = [
+                            {"role": "system", "content": fixer_agent.system_prompt + "\nYou must analyze the full terminal error output below and propose a new set of actions that will actually fix the problem. Do not repeat the same failed command if it will just fail again. Suggest installation of missing extensions, alternative packages, or code changes as needed. If you cannot fix it, suggest an alternative approach."},
+                            {"role": "user", "content": f"Original plan:\n{refined_plan}\n\nFailed action:\n{action}\n\nError/Terminal Output:\n{terminal_output}\n"}
+                        ]
+                        new_code_actions = fixer_agent._get_response(fixer_prompt)
+                        print(f"    Fixer Agent (runtime error) produced: {new_code_actions}")
+                        # Prevent infinite loop: break if new actions are identical or retry limit hit
+                        if new_code_actions.get('actions', []) == actions_list:
+                            print("    Fixer Agent returned the same actions. Breaking to avoid infinite loop.")
+                            break
+                        actions_list = new_code_actions.get('actions', [])
+                        i = 0
+                        retry_count += 1
+                if retry_count >= retry_limit:
+                    print("    Retry limit reached. Halting further attempts to fix the error.")
+
+                print(f"    File operations executed for {llm_name}")
                 self._post_generation_tasks(llm_output_path, llm_name)
 
             except Exception as e:

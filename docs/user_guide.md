@@ -48,3 +48,30 @@ The Jedi Automation Agent provides a fully autonomous workflow for generating co
 -   **Select a Model:** Use the dropdown menu at the top of the chat panel to select the LLM you want to use.
 -   **Enter Your Prompt:** Type your message in the input box at the bottom and press Enter.
 -   **View the Conversation:** The conversation is displayed in the main chat area, with your messages on the right and the AI's responses on the left.
+
+---
+
+## ▶️ How to Run the Generated Project
+
+Depending on your agent-generated project (e.g., Python, Node.js, Laravel), follow these steps:
+
+### For Python Projects
+```bash
+python -m venv venv
+source venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+python -m src.main
+```
+
+### For Node.js Projects
+```bash
+npm install
+npm start
+```
+
+### For Laravel/PHP Projects
+```bash
+composer install
+php artisan migrate
+php artisan serve
+```
