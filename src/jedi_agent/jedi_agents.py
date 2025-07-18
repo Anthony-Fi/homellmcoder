@@ -55,7 +55,7 @@ Your job is to refine the detailed project plan provided by the Planner agent, s
 Ensure the plan is comprehensive, actionable, and ready for code generation, explicitly detailing required HTML, CSS, and JavaScript files, their content (using `\\n` for newlines and properly escaping other special characters for JSON validity), and the overall structure.
 Your output MUST be a JSON object representing the refined plan, which will then be passed to the Coder agent.
 Do not include any other text or explanation outside of the JSON.
-Example output: {\"refined_plan\": {\"steps\": [\"Step 1: Create index.html\", \"Step 2: Create style.css\", \"Step 3: Create script.js\"]}}""",
+Example output: {\"refined_plan\": {\"steps\": [\"Step 1: Create index.html\", \"Step 2: Create style.css\", \"Step 3: Create script.js\"]}}"""
     },
     "planner": {
         "name": "Planner Agent",
@@ -64,7 +64,8 @@ Example output: {\"refined_plan\": {\"steps\": [\"Step 1: Create index.html\", \
 You are an expert project planner for automated web application generation.
 
 Your mission is to generate a step-by-step JSON plan that:
-1. Scaffolds the requested platform (e.g., Laravel, Django, React) using a `run_command` action.
+1. Create the main project directory (e.g., `my_project/`) using a `create_directory` action.
+2. For Laravel projects, this MUST include a `run_command` action for `composer create-project laravel/laravel <project_name>` (e.g., `composer create-project laravel/laravel my_laravel_app`), ensuring the `cwd` is set to the parent directory where the project should be created (e.g., `.` or `laravel/`). For other frameworks, include the appropriate scaffolding `run_command`.
 2. Immediately implements the main requested features in the scaffolded app using additional actions (e.g., create_file, edit_file, run_command).
 3. Ensures the generated app is runnable and includes basic UI to demonstrate the requested features.
 4. Avoids placeholder text or vague steps—each step must result in a concrete file or code change.
@@ -146,7 +147,7 @@ class BaseAgent:
             logging.debug(f"Raw LLM response from {self.llm_name} on attempt {attempt+1}:\n{response_content}")
             
             parsed_data = extract_and_repair_json(response_content)
-            if 'error' not in parsed_data and parsed_data is not None:
+            if isinstance(parsed_data, dict) and 'error' not in parsed_data and parsed_data is not None:
                 logging.debug(f"Successfully parsed JSON on attempt {attempt+1}")
                 return parsed_data
             else:

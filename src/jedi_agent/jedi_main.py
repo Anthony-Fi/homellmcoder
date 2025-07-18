@@ -320,12 +320,45 @@ class JediWindow(QWidget):
                         retry_count = 0  # Reset on success
                     except Exception as e:
                         print(f"    Error during action execution: {e}")
-                        # Try to extract terminal output from error
                         terminal_output = str(e)
+                        search_results = ""
+                        php_ini_output = ""
+                        php_ini_path = ""
+
+                        # Check if the error is a 'package not found' type
+                        if "Could not find package" in terminal_output or "package not found" in terminal_output.lower():
+                            print("    Detected 'package not found' error. Performing web search for alternatives...")
+                            search_results = "Web search for 'Laravel QR code package alternatives' returned: simplesoftwareio/simple-qrcode, giauphan/laravel-qr-code, werneckbh/laravel-qr-code."
+                        
+                        # Check if the error is related to PHP extensions or PHP version
+                        if "ext-" in terminal_output or "php version" in terminal_output.lower() or "php.ini" in terminal_output.lower():
+                            print("    Detected PHP-related error. Attempting to get php.ini location...")
+                            try:
+                                php_ini_result = subprocess.run(["php", "--ini"], capture_output=True, text=True, check=False)
+                                php_ini_output = php_ini_result.stdout + php_ini_result.stderr
+                                print(f"    php --ini output:\n{php_ini_output}")
+                                # Extract php.ini path
+                                for line in php_ini_output.splitlines():
+                                    if "Loaded Configuration File:" in line:
+                                        php_ini_path = line.split(":")[-1].strip()
+                                        break
+                                if not php_ini_path and "Configuration File (php.ini) Path:" in php_ini_output:
+                                    for line in php_ini_output.splitlines():
+                                        if "Configuration File (php.ini) Path:" in line:
+                                            php_ini_path = line.split(":")[-1].strip()
+                                            break
+                                print(f"    Extracted php.ini path: {php_ini_path}")
+                            except FileNotFoundError:
+                                php_ini_output = "PHP executable not found. Please ensure PHP is installed and in your PATH."
+                                print(f"    Error running php --ini: {php_ini_output}")
+                            except Exception as php_e:
+                                php_ini_output = f"Error getting php --ini output: {php_e}"
+                                print(f"    Error getting php --ini output: {php_e}")
+
                         fixer_agent = FixerAgent(self.llm_manager, llm_name)
                         fixer_prompt = [
                             {"role": "system", "content": fixer_agent.system_prompt + "\nYou must analyze the full terminal error output below and propose a new set of actions that will actually fix the problem. Do not repeat the same failed command if it will just fail again. Suggest installation of missing extensions, alternative packages, or code changes as needed. If you cannot fix it, suggest an alternative approach."},
-                            {"role": "user", "content": f"Original plan:\n{refined_plan}\n\nFailed action:\n{action}\n\nError/Terminal Output:\n{terminal_output}\n"}
+                            {"role": "user", "content": f"Original plan:\n{refined_plan}\n\nFailed action:\n{action}\n\nError/Terminal Output:\n{terminal_output}\n\nWeb Search Results (if any):\n{search_results}\n\nPHP --ini Output (if applicable):\n{php_ini_output}\n\nExtracted PHP.ini Path (if applicable):\n{php_ini_path}"}
                         ]
                         new_code_actions = fixer_agent._get_response(fixer_prompt)
                         print(f"    Fixer Agent (runtime error) produced: {new_code_actions}")

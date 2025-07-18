@@ -92,18 +92,34 @@ class FileOperationService:
                             raise subprocess.CalledProcessError(exit_code, command_line)
                     else:
                         # Fallback to subprocess.run if no emitter is provided (e.g., for tests)
-                        result = subprocess.run(command_line, shell=True, capture_output=True, text=True, cwd=command_cwd)
-                        last_stdout = result.stdout
-                        last_stderr = result.stderr
-                        last_command = command_line
-                        if result.returncode != 0:
-                            logging.error(f"Command exited with code {result.returncode}: {command_line}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
-                            if capture_output:
-                                return False, result.stdout, result.stderr, command_line
-                            raise subprocess.CalledProcessError(result.returncode, command_line, result.stdout, result.stderr)
-                        logging.info(f"Command stdout:\n{result.stdout}")
-                        if result.stderr:
-                            logging.warning(f"Command stderr:\n{result.stderr}")
+                        try:
+                            process = subprocess.run(command_line, shell=True, capture_output=True, text=True, cwd=command_cwd)
+                            last_stdout = process.stdout
+                            last_stderr = process.stderr
+                            last_command = command_line
+                            if process.returncode != 0:
+                                logging.error(f"Command exited with code {process.returncode}: {command_line}\nSTDOUT:\n{process.stdout}\nSTDERR:\n{process.stderr}")
+                                if capture_output:
+                                    return False, process.stdout, process.stderr, command_line
+                                raise subprocess.CalledProcessError(process.returncode, command_line, process.stdout, process.stderr)
+                            logging.info(f"Command stdout:\n{process.stdout}")
+                            if process.stderr:
+                                logging.warning(f"Command stderr:\n{process.stderr}")
+
+                        except subprocess.CalledProcessError as e:
+                            stdout = e.stdout
+                            stderr = e.stderr
+                            success = False
+                        except FileNotFoundError:
+                            stdout = ""
+                            stderr = f"Error: Command not found: {command_line}"
+                            success = False
+                        except Exception as e:
+                            stdout = ""
+                            stderr = f"An unexpected error occurred: {e}"
+                            success = False
+
+                        return success, stdout, stderr
 
                     continue
 
